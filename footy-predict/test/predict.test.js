@@ -276,3 +276,27 @@ describe("bestOutcome — market/side", () => {
     assert.equal(result.side, "over");
   });
 });
+
+describe("predictThrowIns", () => {
+  const { predictThrowIns } = require("../src/predict");
+
+  test("over/under percentages sum to almost exactly 100", () => {
+    const result = predictThrowIns(13, 12, 25.5);
+    assert.ok(Math.abs(result.overPct + result.underPct - 100) < 0.5);
+  });
+
+  test("a high combined expected total favors the over", () => {
+    const result = predictThrowIns(16, 15, 25.5); // total expected 31, well above the line
+    assert.ok(result.overPct > result.underPct);
+  });
+
+  test("a low combined expected total favors the under", () => {
+    const result = predictThrowIns(9, 8, 25.5); // total expected 17, well below the line
+    assert.ok(result.underPct > result.overPct);
+  });
+
+  test("total expected is the simple sum of both teams' averages", () => {
+    const result = predictThrowIns(13, 12.5, 25.5);
+    assert.equal(result.totalExpectedThrowIns, 25.5);
+  });
+});

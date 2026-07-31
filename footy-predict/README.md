@@ -97,9 +97,15 @@ against the league average to work out an attack/defense strength, then
 combined into a probability for Home Win / Draw / Away Win plus a "most
 likely scoreline." It's math based on real stats — not a guarantee.
 
-**Corners and throw-ins** use football-data.org's own Statistics Add-On (see
-below) — the same recency-weighted, shrinkage-adjusted math as goals,
-computed from data already being fetched, at no extra API-call cost.
+**Corners and throw-ins** use football-data.org's own Statistics Add-On —
+same recency-weighted, shrinkage-adjusted math as goals, but with a real
+cost worth knowing about: football-data.org's list endpoint doesn't
+include per-match stats, only their single-match detail endpoint does. So
+for each team in the upcoming fixtures, this app fetches detail for their
+last 5 finished matches (deduped — two teams playing each other only get
+fetched once) to build the corner/throw-in averages. That's a genuine
+increase in API calls compared to goals, which come free from the league
+list. See "Cold start timing" below for what this means in practice.
 
 **Goals over/under** (free — reuses the same expected-goals numbers above)
 predicts the combined total against a 2.5 line.
@@ -146,13 +152,16 @@ leagues or matches the free API doesn't cover:
      football-data.org support, since add-ons can only be booked on top of
      a paid plan and the cheapest qualifying tier isn't published
    - **Uses the same `FOOTBALL_DATA_API_KEY` you already have** — no
-     second account, no second key, no extra API calls. Corners are
-     computed from the same match data already being fetched for goals.
+     second account, no second key needed
+   - **Read this before enabling it**: unlike goals, corners/throw-ins do
+     cost real extra API calls — football-data.org's list endpoint doesn't
+     include per-match stats, so this app fetches individual match detail
+     for each team's last 5 finished matches. See "Cold start timing" below.
    - Also unlocks free-kicks, goal-kicks, offsides, fouls, possession,
      saves, shots, and cards — not wired into this app yet, but the data's
      there if you want any of them added later
    - If you don't upgrade, the app works exactly as before — every match
-     just won't show a corners line, no errors, nothing breaks
+     just won't show a corners/throw-ins line, no errors, nothing breaks
    - **If you were previously using API-Football for corners**: that
      integration has been removed now that football-data.org covers it
      natively — you can cancel that separate subscription if you'd like
@@ -180,6 +189,24 @@ leagues or matches the free API doesn't cover:
    - Otherwise, sign up at BlessedTexts and grab your `api_key` and `sender_id`
    - Same setup as the Zion project: `BLESSEDTEXTS_API_KEY` and
      `BLESSEDTEXTS_SENDER_ID` — see `src/sms.js` for the exact request shape
+
+## Cold start timing (read this if you enable corners/throw-ins)
+
+Every actual API call is throttled to stay under your rate limit — safe,
+but not instant. Rough numbers, all on a cold cache (nothing loads
+instantly the very first time; after that, it's cached for an hour):
+
+- **Goals only** (no Statistics Add-On): ~15 calls total across all 5
+  leagues, so a few seconds to ~2 minutes depending on your rate limit
+- **With corners/throw-ins enabled**: each league also needs detail-fetches
+  for its teams' recent matches (up to 5 per team, deduped) — this can add
+  anywhere from dozens to a couple hundred extra calls depending on how
+  many teams have upcoming fixtures. At 30 requests/minute, a fully cold
+  load across all 5 leagues could take **several minutes**, not seconds.
+
+This only happens on a genuinely cold cache — once a league's data is
+fetched, it's cached for an hour, so this isn't something that happens on
+every page visit, just the first one after a gap.
 
 ## Environment variables to set in Railway
 

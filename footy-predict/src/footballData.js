@@ -1,7 +1,8 @@
 // Thin wrapper around football-data.org's v4 API, with a simple in-memory
-// cache. The free tier is rate-limited, so anything that doesn't change
-// minute-to-minute (fixtures, season stats) gets cached for a while rather
-// than re-fetched on every page load.
+// cache. The free tier allows exactly 10 requests/minute — this app can
+// need up to 15 on a cold cache (3 calls × 5 leagues), so every actual
+// network call is throttled through a queue with a minimum gap between
+// requests, rather than firing them all at once and hitting a 429.
 
 const BASE_URL = "https://api.football-data.org/v4";
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -13,18 +14,51 @@ const FORM_HALF_LIFE_DAYS = 70;
 
 const cache = new Map();
 
-async function cachedFetch(path) {
-  const cached = cache.get(path);
-  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.data;
+// 7 seconds between requests = ~8.5/minute, comfortably under the 10/minute
+// free-tier cap with margin for other traffic (e.g. a second person loading
+// the app at the same time).
+const MIN_REQUEST_INTERVAL_MS = 7000;
+let requestQueue = Promise.resolve();
+let lastRequestAt = 0;
 
+function throttled(fn) {
+  const result = requestQueue.then(async () => {
+    const wait = Math.max(0, MIN_REQUEST_INTERVAL_MS - (Date.now() - lastRequestAt));
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    lastRequestAt = Date.now();
+    return fn();
+  });
+  // Keep the queue alive even if this particular call fails, so one error
+  // doesn't jam up every request behind it.
+  requestQueue = result.catch(() => {});
+  return result;
+}
+
+async function rawFetch(path) {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: { "X-Auth-Token": process.env.FOOTBALL_DATA_API_KEY },
   });
+  if (res.status === 429) {
+    // Belt-and-braces: the throttle above should prevent this, but if it
+    // still happens (e.g. another process sharing the same account), wait
+    // the time the API tells us to and retry once rather than failing outright.
+    const body = await res.json().catch(() => ({}));
+    const waitSeconds = Number(String(body.message || "").match(/(\d+)\s*second/)?.[1]) || 15;
+    await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
+    return rawFetch(path);
+  }
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`football-data.org request failed (${res.status}): ${body.slice(0, 200)}`);
   }
-  const data = await res.json();
+  return res.json();
+}
+
+async function cachedFetch(path) {
+  const cached = cache.get(path);
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.data;
+
+  const data = await throttled(() => rawFetch(path));
   cache.set(path, { data, at: Date.now() });
   return data;
 }

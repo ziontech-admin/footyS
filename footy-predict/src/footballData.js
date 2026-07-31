@@ -113,6 +113,8 @@ async function enrichWithStatistics(finished, teamNames, perTeamLimit = 5) {
   const byId = new Map(finished.map((m) => [m.id, m]));
   const neededIds = matchIdsNeedingEnrichment(finished, teamNames, perTeamLimit);
 
+  let succeeded = 0, hadStatistics = 0, failed = 0;
+
   await Promise.all(neededIds.map(async (id) => {
     try {
       const detail = await matchDetail(id);
@@ -120,13 +122,16 @@ async function enrichWithStatistics(finished, teamNames, perTeamLimit = 5) {
       if (original && detail) {
         original.homeTeam = { ...original.homeTeam, statistics: detail.homeTeam?.statistics };
         original.awayTeam = { ...original.awayTeam, statistics: detail.awayTeam?.statistics };
+        succeeded += 1;
+        if (detail.homeTeam?.statistics || detail.awayTeam?.statistics) hadStatistics += 1;
       }
-    } catch {
-      // One match's detail failing shouldn't sink the whole enrichment —
-      // it just won't contribute corners/throw-in data, same as before.
+    } catch (err) {
+      failed += 1;
+      console.error(`enrichWithStatistics: failed to fetch match ${id}:`, err.message);
     }
   }));
 
+  console.log(`enrichWithStatistics: ${neededIds.length} matches needed, ${succeeded} fetched OK, ${hadStatistics} actually had statistics data, ${failed} failed`);
   return finished;
 }
 

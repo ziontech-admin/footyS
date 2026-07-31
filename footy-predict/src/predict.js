@@ -151,10 +151,35 @@ function bestOutcome(match) {
     candidates.push({ pct: match.corners.overPct, label: `Over ${match.corners.overUnderLine} corners`, market: "corners", side: "over" });
     candidates.push({ pct: match.corners.underPct, label: `Under ${match.corners.overUnderLine} corners`, market: "corners", side: "under" });
   }
+  if (match.throwIns) {
+    candidates.push({ pct: match.throwIns.overPct, label: `Over ${match.throwIns.overUnderLine} throw-ins`, market: "throwIns", side: "over" });
+    candidates.push({ pct: match.throwIns.underPct, label: `Under ${match.throwIns.overUnderLine} throw-ins`, market: "throwIns", side: "under" });
+  }
   return candidates.reduce((best, c) => (c.pct > best.pct ? c : best));
+}
+
+// Same combined-Poisson approach as corners and goals, for throw-ins.
+// Throw-ins run much higher per match than corners (based on real sample
+// data, roughly 12-14 per team), so the default line is set accordingly —
+// adjust if your own data suggests a different typical total.
+function predictThrowIns(homeAvgThrowInsFor, awayAvgThrowInsFor, overUnderLine = 25.5) {
+  const totalExpected = homeAvgThrowInsFor + awayAvgThrowInsFor;
+  let underOrEqualProb = 0;
+  for (let total = 0; total <= Math.floor(overUnderLine); total++) {
+    underOrEqualProb += poissonProb(total, totalExpected);
+  }
+  const overProb = 1 - underOrEqualProb;
+  return {
+    homeExpectedThrowIns: Math.round(homeAvgThrowInsFor * 10) / 10,
+    awayExpectedThrowIns: Math.round(awayAvgThrowInsFor * 10) / 10,
+    totalExpectedThrowIns: Math.round(totalExpected * 10) / 10,
+    overUnderLine,
+    overPct: Math.round(overProb * 1000) / 10,
+    underPct: Math.round(underOrEqualProb * 1000) / 10,
+  };
 }
 
 module.exports = {
   poissonProb, teamStrength, expectedGoals, predictMatch, predict,
-  predictCorners, predictGoalsOverUnder, bestOutcome, factorial, dixonColesTau,
+  predictCorners, predictThrowIns, predictGoalsOverUnder, bestOutcome, factorial, dixonColesTau,
 };

@@ -5,9 +5,8 @@ const {
   isOwner, listAccounts, addAccount, removeAccount, ownerResetPassword,
 } = require("./auth");
 const { sendSms } = require("./sms");
-const { upcomingMatches, finishedMatches, computeStats, standings } = require("./footballData");
-const { teamCornerStats } = require("./apiFootball");
-const { predict, predictCorners, predictGoalsOverUnder, bestOutcome } = require("./predict");
+const { upcomingMatches, finishedMatches, computeStats, standings, computeStatAverages, extractCorners, extractThrowIns } = require("./footballData");
+const { predict, predictCorners, predictThrowIns, predictGoalsOverUnder, bestOutcome } = require("./predict");
 const {
   recentForm, checkPredictionOutcome, aggregateAccuracy, accuracyByLeague, accuracyByWeek, startOfWeekUtc, checkPickOutcome,
 } = require("./stats");
@@ -48,7 +47,6 @@ app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
     time: new Date().toISOString(),
-    cornersEnabled: Boolean(process.env.API_FOOTBALL_KEY),
   });
 });
 
@@ -185,6 +183,13 @@ async function computeAllPredictions() {
         standings(league.code).catch(() => ({})),
       ]);
       const stats = computeStats(finished);
+      // Corners, from football-data.org's own Statistics Add-On — computed
+      // from the exact same `finished` matches already fetched above for
+      // goals, so this costs zero extra API calls. Returns null if the
+      // add-on isn't active on this account yet (e.g. no matches have
+      // statistics data), in which case corners just won't show, same as before.
+      const cornerStats = computeStatAverages(finished, extractCorners);
+      const throwInStats = computeStatAverages(finished, extractThrowIns);
       const log = getPredictionLog();
       const loggedIds = new Set(log.map((e) => e.matchId));
       const newLogEntries = [];
@@ -200,16 +205,17 @@ async function computeAllPredictions() {
         const goalsOverUnder = predictGoalsOverUnder(prediction.homeExpectedGoals, prediction.awayExpectedGoals);
 
         let corners = null;
-        if (process.env.API_FOOTBALL_KEY) {
-          try {
-            const [homeCorner, awayCorner] = await Promise.all([
-              teamCornerStats(m.homeTeam.name, true),
-              teamCornerStats(m.awayTeam.name, false),
-            ]);
-            if (homeCorner && awayCorner) corners = predictCorners(homeCorner.avgCornersFor, awayCorner.avgCornersFor);
-          } catch {
-            corners = null;
-          }
+        if (cornerStats) {
+          const homeCornerStats = cornerStats.teamStats(m.homeTeam.name);
+          const awayCornerStats = cornerStats.teamStats(m.awayTeam.name);
+          corners = predictCorners(homeCornerStats.homeAvgFor, awayCornerStats.awayAvgFor);
+        }
+
+        let throwIns = null;
+        if (throwInStats) {
+          const homeThrowInStats = throwInStats.teamStats(m.homeTeam.name);
+          const awayThrowInStats = throwInStats.teamStats(m.awayTeam.name);
+          throwIns = predictThrowIns(homeThrowInStats.homeAvgFor, awayThrowInStats.awayAvgFor);
         }
 
         if (!loggedIds.has(m.id)) {
@@ -228,7 +234,7 @@ async function computeAllPredictions() {
           homeCrest: m.homeTeam.crest, awayCrest: m.awayTeam.crest,
           homeForm: recentForm(finished, m.homeTeam.name), awayForm: recentForm(finished, m.awayTeam.name),
           homePosition: table[m.homeTeam.name] || null, awayPosition: table[m.awayTeam.name] || null,
-          prediction, goalsOverUnder, corners,
+          prediction, goalsOverUnder, corners, throwIns,
           explain: {
             homeAvgGoalsFor: Math.round(homeStats.homeAvgGoalsFor * 100) / 100,
             homeAvgGoalsAgainst: Math.round(homeStats.homeAvgGoalsAgainst * 100) / 100,

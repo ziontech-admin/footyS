@@ -167,4 +167,87 @@ async function standings(competitionCode) {
   return positionByTeam;
 }
 
-module.exports = { upcomingMatches, finishedMatches, computeStats, standings, formWeight, shrinkToMean, FORM_HALF_LIFE_DAYS };
+// A generic version of computeStats' math for any per-match stat, not just
+// goals — used for corners (and easy to extend to throw-ins, fouls, shots,
+// etc. later). `extractStat(match)` should return { home, away } numbers
+// for that stat, or null if the match doesn't have it (e.g. the Statistics
+// Add-On wasn't active yet when it was played, or the match hasn't finished).
+// Gets the exact same recency-weighting and small-sample shrinkage as goals
+// — this is the same statistical rigor, not a simplified shortcut for a
+// "lesser" stat.
+function computeStatAverages(matches, extractStat, options = {}) {
+  const nowMs = options.now ?? Date.now();
+  const halfLifeDays = options.halfLifeDays ?? FORM_HALF_LIFE_DAYS;
+  const shrinkK = options.shrinkK ?? 4;
+
+  const teamHomeFor = {}, teamHomeAgainst = {}, teamHomeW = {}, teamHomeGames = {};
+  const teamAwayFor = {}, teamAwayAgainst = {}, teamAwayW = {}, teamAwayGames = {};
+  let wHomeTotal = 0, wAwayTotal = 0, wGames = 0;
+
+  matches.forEach((m) => {
+    const stat = extractStat(m);
+    if (!stat || stat.home == null || stat.away == null) return;
+    const home = m.homeTeam.name, away = m.awayTeam.name;
+    const w = formWeight(m.utcDate, nowMs, halfLifeDays);
+
+    teamHomeFor[home] = (teamHomeFor[home] || 0) + stat.home * w;
+    teamHomeAgainst[home] = (teamHomeAgainst[home] || 0) + stat.away * w;
+    teamHomeW[home] = (teamHomeW[home] || 0) + w;
+    teamHomeGames[home] = (teamHomeGames[home] || 0) + 1;
+
+    teamAwayFor[away] = (teamAwayFor[away] || 0) + stat.away * w;
+    teamAwayAgainst[away] = (teamAwayAgainst[away] || 0) + stat.home * w;
+    teamAwayW[away] = (teamAwayW[away] || 0) + w;
+    teamAwayGames[away] = (teamAwayGames[away] || 0) + 1;
+
+    wHomeTotal += stat.home * w;
+    wAwayTotal += stat.away * w;
+    wGames += w;
+  });
+
+  // If nothing had this stat available (e.g. no matches with the add-on
+  // active yet), return null rather than a misleading all-zero result.
+  if (wGames === 0) return null;
+
+  const leagueAvgHome = wHomeTotal / wGames;
+  const leagueAvgAway = wAwayTotal / wGames;
+  const weightedAvg = (sumObj, weightObj, team, fallback) => (weightObj[team] > 0 ? sumObj[team] / weightObj[team] : fallback);
+
+  return {
+    leagueAvgHome, leagueAvgAway,
+    teamStats: (teamName) => {
+      const homeGames = teamHomeGames[teamName] || 0;
+      const awayGames = teamAwayGames[teamName] || 0;
+      return {
+        homeAvgFor: shrinkToMean(weightedAvg(teamHomeFor, teamHomeW, teamName, leagueAvgHome), leagueAvgHome, homeGames, shrinkK),
+        homeAvgAgainst: shrinkToMean(weightedAvg(teamHomeAgainst, teamHomeW, teamName, leagueAvgAway), leagueAvgAway, homeGames, shrinkK),
+        awayAvgFor: shrinkToMean(weightedAvg(teamAwayFor, teamAwayW, teamName, leagueAvgAway), leagueAvgAway, awayGames, shrinkK),
+        awayAvgAgainst: shrinkToMean(weightedAvg(teamAwayAgainst, teamAwayW, teamName, leagueAvgHome), leagueAvgHome, awayGames, shrinkK),
+        homeGames, awayGames,
+      };
+    },
+  };
+}
+
+// Extracts corner counts from a match, using football-data.org's own
+// Statistics Add-On field (statistics.corner_kicks) — returns null if this
+// match doesn't have it (add-on wasn't active, or match hasn't finished).
+function extractCorners(match) {
+  const home = match.homeTeam?.statistics?.corner_kicks;
+  const away = match.awayTeam?.statistics?.corner_kicks;
+  if (home == null || away == null) return null;
+  return { home, away };
+}
+
+// Same idea as extractCorners, for throw-ins (statistics.throw_ins).
+function extractThrowIns(match) {
+  const home = match.homeTeam?.statistics?.throw_ins;
+  const away = match.awayTeam?.statistics?.throw_ins;
+  if (home == null || away == null) return null;
+  return { home, away };
+}
+
+module.exports = {
+  upcomingMatches, finishedMatches, computeStats, standings, formWeight, shrinkToMean, FORM_HALF_LIFE_DAYS,
+  computeStatAverages, extractCorners, extractThrowIns,
+};

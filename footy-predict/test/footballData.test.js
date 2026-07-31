@@ -97,3 +97,80 @@ describe("shrinkToMean", () => {
     assert.equal(v, 2);
   });
 });
+
+describe("computeStatAverages", () => {
+  const { computeStatAverages, extractCorners } = require("../src/footballData");
+
+  function fakeMatchWithCorners(homeTeam, awayTeam, homeCorners, awayCorners, utcDate = "2026-01-01T15:00:00Z") {
+    return {
+      homeTeam: { name: homeTeam, statistics: { corner_kicks: homeCorners } },
+      awayTeam: { name: awayTeam, statistics: { corner_kicks: awayCorners } },
+      utcDate,
+    };
+  }
+
+  test("returns null when no matches have the stat available at all", () => {
+    const matches = [{ homeTeam: { name: "A" }, awayTeam: { name: "B" }, utcDate: "2026-01-01T15:00:00Z" }];
+    const result = computeStatAverages(matches, extractCorners);
+    assert.equal(result, null);
+  });
+
+  test("computes league and per-team averages from matches that do have the stat", () => {
+    const matches = [
+      fakeMatchWithCorners("A", "B", 6, 4),
+      fakeMatchWithCorners("C", "A", 5, 7), // A away: for=7, against=5
+    ];
+    const result = computeStatAverages(matches, extractCorners, { now: new Date("2026-06-01") });
+    assert.ok(result);
+    const aStats = result.teamStats("A");
+    assert.ok(aStats.homeAvgFor > 0);
+    assert.ok(aStats.awayAvgFor > 0);
+  });
+
+  test("skips matches missing the stat, uses the ones that have it", () => {
+    const matches = [
+      fakeMatchWithCorners("A", "B", 6, 4),
+      { homeTeam: { name: "A" }, awayTeam: { name: "C" }, utcDate: "2026-01-02T15:00:00Z" }, // no statistics field
+    ];
+    const result = computeStatAverages(matches, extractCorners, { now: new Date("2026-06-01") });
+    assert.ok(result); // still works, just from the one match that has data
+  });
+
+  test("extractCorners returns null for a match without the Statistics Add-On data", () => {
+    const match = { homeTeam: { name: "A" }, awayTeam: { name: "B" } };
+    assert.equal(extractCorners(match), null);
+  });
+
+  test("extractCorners returns the real numbers when present", () => {
+    const match = fakeMatchWithCorners("A", "B", 6, 4);
+    assert.deepEqual(extractCorners(match), { home: 6, away: 4 });
+  });
+});
+
+describe("extractThrowIns", () => {
+  const { extractThrowIns, computeStatAverages } = require("../src/footballData");
+
+  function fakeMatchWithThrowIns(homeTeam, awayTeam, homeThrowIns, awayThrowIns, utcDate = "2026-01-01T15:00:00Z") {
+    return {
+      homeTeam: { name: homeTeam, statistics: { throw_ins: homeThrowIns } },
+      awayTeam: { name: awayTeam, statistics: { throw_ins: awayThrowIns } },
+      utcDate,
+    };
+  }
+
+  test("returns null for a match without throw-in data", () => {
+    assert.equal(extractThrowIns({ homeTeam: { name: "A" }, awayTeam: { name: "B" } }), null);
+  });
+
+  test("returns real numbers when present", () => {
+    const match = fakeMatchWithThrowIns("A", "B", 12, 14);
+    assert.deepEqual(extractThrowIns(match), { home: 12, away: 14 });
+  });
+
+  test("works through computeStatAverages the same way corners do", () => {
+    const matches = [fakeMatchWithThrowIns("A", "B", 12, 14), fakeMatchWithThrowIns("C", "A", 10, 15)];
+    const result = computeStatAverages(matches, extractThrowIns, { now: new Date("2026-06-01") });
+    assert.ok(result);
+    assert.ok(result.teamStats("A").homeAvgFor > 0);
+  });
+});

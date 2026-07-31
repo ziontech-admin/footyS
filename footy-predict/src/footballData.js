@@ -68,9 +68,27 @@ async function upcomingMatches(competitionCode, limit = 10) {
   return (data.matches || []).slice(0, limit);
 }
 
-async function finishedMatches(competitionCode) {
-  const data = await cachedFetch(`/competitions/${competitionCode}/matches?status=FINISHED`);
+// `seasonStartYear`, if given, pulls a specific season (e.g. 2025 for the
+// 2025/26 season) instead of whatever football-data.org considers
+// "current" — used to bridge back to last season's real results at the
+// very start of a new one, before it has any finished matches of its own.
+async function finishedMatches(competitionCode, seasonStartYear) {
+  const seasonParam = seasonStartYear ? `&season=${seasonStartYear}` : "";
+  const data = await cachedFetch(`/competitions/${competitionCode}/matches?status=FINISHED${seasonParam}`);
   return data.matches || [];
+}
+
+// football-data.org marks a new season "current" up to 30 days before it
+// actually starts — so right at the start of a season, `finishedMatches()`
+// can legitimately return nothing yet, not because of a bug, just because
+// no one's played a match. This reads the real season start date straight
+// off an upcoming fixture (rather than guessing from today's date) to work
+// out what "last season" actually was, so it can be used as a bridge.
+function previousSeasonStartYear(fixtures) {
+  const startDate = fixtures?.[0]?.season?.startDate;
+  if (!startDate) return null;
+  const year = new Date(startDate).getUTCFullYear();
+  return Number.isFinite(year) ? year - 1 : null;
 }
 
 // The competition-wide list endpoint (finishedMatches above) does NOT
@@ -312,4 +330,5 @@ function extractThrowIns(match) {
 module.exports = {
   upcomingMatches, finishedMatches, computeStats, standings, formWeight, shrinkToMean, FORM_HALF_LIFE_DAYS,
   computeStatAverages, extractCorners, extractThrowIns, matchDetail, enrichWithStatistics, matchIdsNeedingEnrichment,
+  previousSeasonStartYear,
 };

@@ -190,6 +190,17 @@ leagues or matches the free API doesn't cover:
    - Same setup as the Zion project: `BLESSEDTEXTS_API_KEY` and
      `BLESSEDTEXTS_SENDER_ID` — see `src/sms.js` for the exact request shape
 
+## Start-of-season handling
+
+football-data.org marks a new season "current" up to 30 days before it
+even begins — which means right at the start of a season, there may be
+**zero finished matches** to compute anything from, and every team would
+otherwise show the exact same generic prediction. This app automatically
+bridges in last season's results when the current one has fewer than 20
+finished matches so far — recency weighting (the same system used for
+everything else) naturally shifts weight onto the new season's own matches
+as they start coming in, so this fades out on its own as the season progresses.
+
 ## Cold start timing (read this if you enable corners/throw-ins)
 
 Every actual API call is throttled to stay under your rate limit — safe,

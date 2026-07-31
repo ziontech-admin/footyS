@@ -5,7 +5,10 @@ const {
   isOwner, listAccounts, addAccount, removeAccount, ownerResetPassword,
 } = require("./auth");
 const { sendSms } = require("./sms");
-const { upcomingMatches, finishedMatches, computeStats, standings, computeStatAverages, extractCorners, extractThrowIns, enrichWithStatistics } = require("./footballData");
+const {
+  upcomingMatches, finishedMatches, computeStats, standings, computeStatAverages, extractCorners, extractThrowIns,
+  enrichWithStatistics, previousSeasonStartYear,
+} = require("./footballData");
 const { predict, predictCorners, predictThrowIns, predictGoalsOverUnder, bestOutcome } = require("./predict");
 const {
   recentForm, checkPredictionOutcome, aggregateAccuracy, accuracyByLeague, accuracyByWeek, startOfWeekUtc, checkPickOutcome,
@@ -177,11 +180,34 @@ function sampleConfidence(homeGames, awayGames) {
 async function computeAllPredictions() {
   const results = await Promise.all(LEAGUES.map(async (league) => {
     try {
-      const [fixtures, finished, table] = await Promise.all([
+      const [fixtures, currentSeasonFinished, table] = await Promise.all([
         upcomingMatches(league.code, 10),
         finishedMatches(league.code),
         standings(league.code).catch(() => ({})),
       ]);
+
+      // At the very start of a season (which football-data.org marks as
+      // "current" up to 30 days before it even begins), there may be
+      // few or no finished matches yet — every team would otherwise fall
+      // back to the same generic default, making every prediction look
+      // identical. Bridge in last season's results in that case; recency
+      // weighting (see formWeight) naturally favors any current-season
+      // matches over these once they start coming in.
+      const MIN_MATCHES_BEFORE_BRIDGING = 20;
+      let finished = currentSeasonFinished;
+      if (currentSeasonFinished.length < MIN_MATCHES_BEFORE_BRIDGING) {
+        const lastSeasonYear = previousSeasonStartYear(fixtures);
+        if (lastSeasonYear) {
+          try {
+            const lastSeasonFinished = await finishedMatches(league.code, lastSeasonYear);
+            finished = [...lastSeasonFinished, ...currentSeasonFinished];
+            console.log(`${league.name}: only ${currentSeasonFinished.length} current-season matches, bridged in ${lastSeasonFinished.length} from ${lastSeasonYear}/${lastSeasonYear + 1}`);
+          } catch (err) {
+            console.error(`${league.name}: failed to bridge to last season:`, err.message);
+          }
+        }
+      }
+
       const stats = computeStats(finished);
 
       // Corners/throw-ins: football-data.org's competition-wide match list

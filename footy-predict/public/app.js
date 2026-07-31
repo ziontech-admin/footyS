@@ -155,6 +155,7 @@ function formHtml(form) {
 function matchCardHtml(m) {
   const p = m.prediction;
   const c = m.corners;
+  const t = m.throwIns;
   const fav = favOutcome(p);
   const conf = m.confidence || "medium";
   return `
@@ -203,6 +204,12 @@ function matchCardHtml(m) {
         <div class="corners-row">
           <span>⛳ Corners: ~${c.totalExpectedCorners} expected</span>
           <span>O/U ${c.overUnderLine}: <strong>${c.overPct}%</strong> over · <strong>${c.underPct}%</strong> under</span>
+        </div>
+      ` : ""}
+      ${t ? `
+        <div class="corners-row">
+          <span>🤾 Throw-ins: ~${t.totalExpectedThrowIns} expected</span>
+          <span>O/U ${t.overUnderLine}: <strong>${t.overPct}%</strong> over · <strong>${t.underPct}%</strong> under</span>
         </div>
       ` : ""}
       ${explainHtml(m.explain)}

@@ -5,7 +5,7 @@ const {
   isOwner, listAccounts, addAccount, removeAccount, ownerResetPassword,
 } = require("./auth");
 const { sendSms } = require("./sms");
-const { upcomingMatches, finishedMatches, computeStats, standings, computeStatAverages, extractCorners, extractThrowIns } = require("./footballData");
+const { upcomingMatches, finishedMatches, computeStats, standings, computeStatAverages, extractCorners, extractThrowIns, enrichWithStatistics } = require("./footballData");
 const { predict, predictCorners, predictThrowIns, predictGoalsOverUnder, bestOutcome } = require("./predict");
 const {
   recentForm, checkPredictionOutcome, aggregateAccuracy, accuracyByLeague, accuracyByWeek, startOfWeekUtc, checkPickOutcome,
@@ -183,13 +183,21 @@ async function computeAllPredictions() {
         standings(league.code).catch(() => ({})),
       ]);
       const stats = computeStats(finished);
-      // Corners, from football-data.org's own Statistics Add-On — computed
-      // from the exact same `finished` matches already fetched above for
-      // goals, so this costs zero extra API calls. Returns null if the
-      // add-on isn't active on this account yet (e.g. no matches have
-      // statistics data), in which case corners just won't show, same as before.
+
+      // Corners/throw-ins: football-data.org's competition-wide match list
+      // doesn't include per-match statistics — only the single-match detail
+      // endpoint does. So each upcoming fixture's two teams get their most
+      // recent finished matches enriched with a detail fetch (bounded and
+      // deduped — see enrichWithStatistics), then corners/throw-ins are
+      // computed from that enriched data the same way goals are computed
+      // from the plain list. If the Statistics Add-On isn't active on this
+      // account, the enrichment finds no statistics and these simply come
+      // back null — no error, corners/throw-ins just don't show.
+      const teamsInFixtures = Array.from(new Set(fixtures.flatMap((m) => [m.homeTeam.name, m.awayTeam.name])));
+      await enrichWithStatistics(finished, teamsInFixtures, 5);
       const cornerStats = computeStatAverages(finished, extractCorners);
       const throwInStats = computeStatAverages(finished, extractThrowIns);
+
       const log = getPredictionLog();
       const loggedIds = new Set(log.map((e) => e.matchId));
       const newLogEntries = [];

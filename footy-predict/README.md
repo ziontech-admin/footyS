@@ -97,9 +97,9 @@ against the league average to work out an attack/defense strength, then
 combined into a probability for Home Win / Draw / Away Win plus a "most
 likely scoreline." It's math based on real stats — not a guarantee.
 
-**Corners** (optional, requires a paid API-Football key — see below) use
-the same Poisson math applied to each team's average corners won/conceded,
-predicting the combined total against a 9.5 line (over/under).
+**Corners and throw-ins** use football-data.org's own Statistics Add-On (see
+below) — the same recency-weighted, shrinkage-adjusted math as goals,
+computed from data already being fetched, at no extra API-call cost.
 
 **Goals over/under** (free — reuses the same expected-goals numbers above)
 predicts the combined total against a 2.5 line.
@@ -140,21 +140,22 @@ leagues or matches the free API doesn't cover:
    - Without this, every restart wipes accounts back to `FOOTY_USERS`'s
      original passwords and resets the accuracy record to zero
 
-3. **A paid API-Football key** (optional — only if you want corner predictions)
-   - Sign up at https://www.api-football.com or via RapidAPI
-   - The **Pro tier (~$19/month)** is the cheapest plan that includes match
-     statistics (corners)
-   - **Read this before enabling it**: getting corners requires a different,
-     more expensive kind of API call than goals do — for each match, this
-     app has to look up each team's last 10 games *and then* fetch each of
-     those games' statistics separately, just to compute one average. That's
-     roughly 20+ API calls per team, cached for 24 hours to keep this
-     affordable. Watch your API-Football usage dashboard for the first few
-     days after enabling this to make sure you're comfortably within your
-     plan's request quota — if you're not, corners may need to be limited to
-     fewer leagues or checked less often.
-   - If you don't set this key, the app works exactly as before — every
-     match just won't show a corners line, no errors, nothing breaks.
+3. **Corners and throw-ins (optional)** — football-data.org's own Statistics Add-On
+   - Needs the **Deep Data Plan (€29/mo)** as a base, plus the **Statistics
+     Add-On (€15/mo)** on top — confirm the exact minimum plan directly with
+     football-data.org support, since add-ons can only be booked on top of
+     a paid plan and the cheapest qualifying tier isn't published
+   - **Uses the same `FOOTBALL_DATA_API_KEY` you already have** — no
+     second account, no second key, no extra API calls. Corners are
+     computed from the same match data already being fetched for goals.
+   - Also unlocks free-kicks, goal-kicks, offsides, fouls, possession,
+     saves, shots, and cards — not wired into this app yet, but the data's
+     there if you want any of them added later
+   - If you don't upgrade, the app works exactly as before — every match
+     just won't show a corners line, no errors, nothing breaks
+   - **If you were previously using API-Football for corners**: that
+     integration has been removed now that football-data.org covers it
+     natively — you can cancel that separate subscription if you'd like
 
 4. **A JWT secret** — any long random string, used to sign login sessions.
    You can generate one at https://randomkeygen.com (use a "CodeIgniter
@@ -190,7 +191,6 @@ leagues or matches the free API doesn't cover:
 | `FOOTY_USERS` | Your JSON list from step 5, with phone numbers (paste it exactly as one line) | Yes, on first boot only |
 | `BLESSEDTEXTS_API_KEY` | Your BlessedTexts API key from step 6 | Yes — for password resets |
 | `BLESSEDTEXTS_SENDER_ID` | Your BlessedTexts sender ID | Yes — for password resets |
-| `API_FOOTBALL_KEY` | Your API-Football key | No — only for corners |
 
 ## Deploying (same GitHub + Railway workflow as your other app)
 
@@ -198,7 +198,7 @@ leagues or matches the free API doesn't cover:
    this is a completely different project)
 2. Upload all these files into it, keeping the folder structure:
    - `package.json`
-   - `src/index.js`, `src/auth.js`, `src/footballData.js`, `src/apiFootball.js`, `src/predict.js`, `src/stats.js`, `src/store.js`, `src/csvParse.js`, `src/sms.js`
+   - `src/index.js`, `src/auth.js`, `src/footballData.js`, `src/predict.js`, `src/stats.js`, `src/store.js`, `src/csvParse.js`, `src/sms.js`
    - `public/index.html`, `public/style.css`, `public/app.js`
    - `test/predict.test.js`, `test/footballData.test.js`, `test/stats.test.js`, `test/csvParse.test.js`, `test/auth.test.js`
 3. In Railway: New Project → Deploy from GitHub repo → pick this new repo

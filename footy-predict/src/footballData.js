@@ -73,6 +73,63 @@ async function finishedMatches(competitionCode) {
   return data.matches || [];
 }
 
+// The competition-wide list endpoint (finishedMatches above) does NOT
+// include per-match statistics (corners, throw-ins, etc.) — only the
+// single-match detail endpoint does. This fetches one match's full detail,
+// going through the same cache + throttle as everything else.
+async function matchDetail(matchId) {
+  return cachedFetch(`/matches/${matchId}`);
+}
+
+// Pure selection logic: which match IDs need detail-fetching, given a list
+// of teams and how many of each team's most-recent matches to cover.
+// Separated from the actual fetching below so this can be tested without
+// any network access.
+function matchIdsNeedingEnrichment(finished, teamNames, perTeamLimit = 5) {
+  const teamSet = new Set(teamNames);
+  const neededIds = new Set();
+
+  teamSet.forEach((team) => {
+    const teamMatches = finished
+      .filter((m) => m.homeTeam.name === team || m.awayTeam.name === team)
+      .sort((a, b) => new Date(b.utcDate) - new Date(a.utcDate))
+      .slice(0, perTeamLimit);
+    teamMatches.forEach((m) => neededIds.add(m.id));
+  });
+
+  return Array.from(neededIds);
+}
+
+// Enriches a subset of `finished` matches with statistics, bounded and
+// deduped so this doesn't turn into "fetch detail for every match all
+// season." For each team in `teamNames`, only their most recent
+// `perTeamLimit` matches get detail-fetched — and since two teams facing
+// each other share a match, the actual number of unique fetches needed is
+// usually well below teamNames.length × perTeamLimit. Returns the same
+// array with statistics merged onto whichever matches were selected;
+// matches that weren't selected are returned unchanged (so
+// computeStatAverages simply skips them, same as any match missing stats).
+async function enrichWithStatistics(finished, teamNames, perTeamLimit = 5) {
+  const byId = new Map(finished.map((m) => [m.id, m]));
+  const neededIds = matchIdsNeedingEnrichment(finished, teamNames, perTeamLimit);
+
+  await Promise.all(neededIds.map(async (id) => {
+    try {
+      const detail = await matchDetail(id);
+      const original = byId.get(id);
+      if (original && detail) {
+        original.homeTeam = { ...original.homeTeam, statistics: detail.homeTeam?.statistics };
+        original.awayTeam = { ...original.awayTeam, statistics: detail.awayTeam?.statistics };
+      }
+    } catch {
+      // One match's detail failing shouldn't sink the whole enrichment —
+      // it just won't contribute corners/throw-in data, same as before.
+    }
+  }));
+
+  return finished;
+}
+
 function formWeight(utcDate, nowMs, halfLifeDays = FORM_HALF_LIFE_DAYS) {
   if (!utcDate) return 1;
   const t = new Date(utcDate).getTime();
@@ -249,5 +306,5 @@ function extractThrowIns(match) {
 
 module.exports = {
   upcomingMatches, finishedMatches, computeStats, standings, formWeight, shrinkToMean, FORM_HALF_LIFE_DAYS,
-  computeStatAverages, extractCorners, extractThrowIns,
+  computeStatAverages, extractCorners, extractThrowIns, matchDetail, enrichWithStatistics, matchIdsNeedingEnrichment,
 };

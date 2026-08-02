@@ -94,42 +94,42 @@ function predict({ homeAvgGoalsFor, homeAvgGoalsAgainst, awayAvgGoalsFor, awayAv
   return predictMatch(homeExpected, awayExpected);
 }
 
-// Corner prediction — same Poisson math as goals (corners are count data
-// too), but the number people usually care about is the combined total vs.
-// a line (e.g. "over/under 9.5"), not a home/away/draw split.
-function predictCorners(homeAvgCornersFor, awayAvgCornersFor, overUnderLine = 9.5) {
-  const totalExpected = homeAvgCornersFor + awayAvgCornersFor;
+// The shared math behind every over/under market (goals, corners,
+// throw-ins, fouls, shots, cards, etc.) — the sum of two independent
+// Poisson variables is itself Poisson with the combined rate, so this
+// works for any count-based stat, not just goals.
+function predictStatOverUnder(homeAvg, awayAvg, overUnderLine) {
+  const totalExpected = homeAvg + awayAvg;
   let underOrEqualProb = 0;
   for (let total = 0; total <= Math.floor(overUnderLine); total++) {
     underOrEqualProb += poissonProb(total, totalExpected);
   }
   const overProb = 1 - underOrEqualProb;
   return {
-    homeExpectedCorners: Math.round(homeAvgCornersFor * 10) / 10,
-    awayExpectedCorners: Math.round(awayAvgCornersFor * 10) / 10,
-    totalExpectedCorners: Math.round(totalExpected * 10) / 10,
+    homeExpected: Math.round(homeAvg * 100) / 100,
+    awayExpected: Math.round(awayAvg * 100) / 100,
+    totalExpected: Math.round(totalExpected * 100) / 100,
     overUnderLine,
     overPct: Math.round(overProb * 1000) / 10,
     underPct: Math.round(underOrEqualProb * 1000) / 10,
   };
 }
 
-// Total goals over/under — same combined-Poisson trick as corners, using
-// the home/away expected goals already computed for the win/draw/loss
-// prediction. No extra API calls needed; free with the existing data.
-function predictGoalsOverUnder(homeExpectedGoals, awayExpectedGoals, overUnderLine = 2.5) {
-  const totalExpected = homeExpectedGoals + awayExpectedGoals;
-  let underOrEqualProb = 0;
-  for (let total = 0; total <= Math.floor(overUnderLine); total++) {
-    underOrEqualProb += poissonProb(total, totalExpected);
-  }
-  const overProb = 1 - underOrEqualProb;
+// Corner prediction — thin wrapper around predictStatOverUnder, keeping
+// its historical field names (totalExpectedCorners etc.) so nothing
+// depending on this shape breaks.
+function predictCorners(homeAvgCornersFor, awayAvgCornersFor, overUnderLine = 9.5) {
+  const r = predictStatOverUnder(homeAvgCornersFor, awayAvgCornersFor, overUnderLine);
   return {
-    totalExpectedGoals: Math.round(totalExpected * 100) / 100,
-    overUnderLine,
-    overPct: Math.round(overProb * 1000) / 10,
-    underPct: Math.round(underOrEqualProb * 1000) / 10,
+    homeExpectedCorners: r.homeExpected, awayExpectedCorners: r.awayExpected, totalExpectedCorners: r.totalExpected,
+    overUnderLine: r.overUnderLine, overPct: r.overPct, underPct: r.underPct,
   };
+}
+
+// Total goals over/under — same wrapper pattern.
+function predictGoalsOverUnder(homeExpectedGoals, awayExpectedGoals, overUnderLine = 2.5) {
+  const r = predictStatOverUnder(homeExpectedGoals, awayExpectedGoals, overUnderLine);
+  return { totalExpectedGoals: r.totalExpected, overUnderLine: r.overUnderLine, overPct: r.overPct, underPct: r.underPct };
 }
 
 // Scans a single match's full prediction (result + goals O/U + corners O/U,
@@ -155,6 +155,10 @@ function bestOutcome(match) {
     candidates.push({ pct: match.throwIns.overPct, label: `Over ${match.throwIns.overUnderLine} throw-ins`, market: "throwIns", side: "over" });
     candidates.push({ pct: match.throwIns.underPct, label: `Under ${match.throwIns.overUnderLine} throw-ins`, market: "throwIns", side: "under" });
   }
+  if (match.cards) {
+    candidates.push({ pct: match.cards.overPct, label: `Over ${match.cards.overUnderLine} cards`, market: "cards", side: "over" });
+    candidates.push({ pct: match.cards.underPct, label: `Under ${match.cards.overUnderLine} cards`, market: "cards", side: "under" });
+  }
   return candidates.reduce((best, c) => (c.pct > best.pct ? c : best));
 }
 
@@ -163,23 +167,59 @@ function bestOutcome(match) {
 // data, roughly 12-14 per team), so the default line is set accordingly —
 // adjust if your own data suggests a different typical total.
 function predictThrowIns(homeAvgThrowInsFor, awayAvgThrowInsFor, overUnderLine = 25.5) {
-  const totalExpected = homeAvgThrowInsFor + awayAvgThrowInsFor;
-  let underOrEqualProb = 0;
-  for (let total = 0; total <= Math.floor(overUnderLine); total++) {
-    underOrEqualProb += poissonProb(total, totalExpected);
-  }
-  const overProb = 1 - underOrEqualProb;
+  const r = predictStatOverUnder(homeAvgThrowInsFor, awayAvgThrowInsFor, overUnderLine);
   return {
-    homeExpectedThrowIns: Math.round(homeAvgThrowInsFor * 10) / 10,
-    awayExpectedThrowIns: Math.round(awayAvgThrowInsFor * 10) / 10,
-    totalExpectedThrowIns: Math.round(totalExpected * 10) / 10,
-    overUnderLine,
-    overPct: Math.round(overProb * 1000) / 10,
-    underPct: Math.round(underOrEqualProb * 1000) / 10,
+    homeExpectedThrowIns: r.homeExpected, awayExpectedThrowIns: r.awayExpected, totalExpectedThrowIns: r.totalExpected,
+    overUnderLine: r.overUnderLine, overPct: r.overPct, underPct: r.underPct,
   };
 }
 
+// The rest of the Statistics Add-On markets — same pattern, same math,
+// just different labels. Default lines are rough starting points (real
+// per-league calibration happens via calibratedLine, same as everything else).
+function predictFouls(homeAvgFor, awayAvgFor, overUnderLine = 22.5) {
+  const r = predictStatOverUnder(homeAvgFor, awayAvgFor, overUnderLine);
+  return { homeExpectedFouls: r.homeExpected, awayExpectedFouls: r.awayExpected, totalExpectedFouls: r.totalExpected, overUnderLine: r.overUnderLine, overPct: r.overPct, underPct: r.underPct };
+}
+
+function predictShots(homeAvgFor, awayAvgFor, overUnderLine = 24.5) {
+  const r = predictStatOverUnder(homeAvgFor, awayAvgFor, overUnderLine);
+  return { homeExpectedShots: r.homeExpected, awayExpectedShots: r.awayExpected, totalExpectedShots: r.totalExpected, overUnderLine: r.overUnderLine, overPct: r.overPct, underPct: r.underPct };
+}
+
+function predictOffsides(homeAvgFor, awayAvgFor, overUnderLine = 3.5) {
+  const r = predictStatOverUnder(homeAvgFor, awayAvgFor, overUnderLine);
+  return { homeExpectedOffsides: r.homeExpected, awayExpectedOffsides: r.awayExpected, totalExpectedOffsides: r.totalExpected, overUnderLine: r.overUnderLine, overPct: r.overPct, underPct: r.underPct };
+}
+
+function predictGoalKicks(homeAvgFor, awayAvgFor, overUnderLine = 15.5) {
+  const r = predictStatOverUnder(homeAvgFor, awayAvgFor, overUnderLine);
+  return { homeExpectedGoalKicks: r.homeExpected, awayExpectedGoalKicks: r.awayExpected, totalExpectedGoalKicks: r.totalExpected, overUnderLine: r.overUnderLine, overPct: r.overPct, underPct: r.underPct };
+}
+
+function predictSaves(homeAvgFor, awayAvgFor, overUnderLine = 6.5) {
+  const r = predictStatOverUnder(homeAvgFor, awayAvgFor, overUnderLine);
+  return { homeExpectedSaves: r.homeExpected, awayExpectedSaves: r.awayExpected, totalExpectedSaves: r.totalExpected, overUnderLine: r.overUnderLine, overPct: r.overPct, underPct: r.underPct };
+}
+
+function predictCards(homeAvgFor, awayAvgFor, overUnderLine = 3.5) {
+  const r = predictStatOverUnder(homeAvgFor, awayAvgFor, overUnderLine);
+  return { homeExpectedCards: r.homeExpected, awayExpectedCards: r.awayExpected, totalExpectedCards: r.totalExpected, overUnderLine: r.overUnderLine, overPct: r.overPct, underPct: r.underPct };
+}
+
+// Finds the natural over/under line (always an X.5 value, since a whole
+// number would allow ties/pushes) closest to a league's real average total.
+// This is what replaces one-size-fits-all defaults like "always 2.5 goals"
+// or "always 9.5 corners" — a league that actually averages 3.1 combined
+// goals per match should have its line at 3.5, not 2.5, or every
+// over/under prediction in that league skews lopsided for no good reason.
+function calibratedLine(leagueAverage) {
+  if (!Number.isFinite(leagueAverage) || leagueAverage <= 0) return 2.5; // sane fallback if data's missing
+  return Math.round(leagueAverage - 0.5) + 0.5;
+}
+
 module.exports = {
-  poissonProb, teamStrength, expectedGoals, predictMatch, predict,
-  predictCorners, predictThrowIns, predictGoalsOverUnder, bestOutcome, factorial, dixonColesTau,
+  poissonProb, teamStrength, expectedGoals, predictMatch, predict, predictStatOverUnder,
+  predictCorners, predictThrowIns, predictFouls, predictShots, predictOffsides, predictGoalKicks, predictSaves, predictCards,
+  predictGoalsOverUnder, bestOutcome, factorial, dixonColesTau, calibratedLine,
 };

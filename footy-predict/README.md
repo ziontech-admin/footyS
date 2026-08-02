@@ -23,8 +23,9 @@ A few things beyond the core feature set, worth knowing about:
   sample size means less trustworthy stats, so this flags that honestly.
 - **Login rate limiting** — 8 attempts per IP per 15 minutes, to slow down
   password guessing.
-- **`/api/health`** — a simple health-check endpoint, useful if you ever
-  want to monitor whether the app is up.
+- **`/api/health`** — shows per-league cache status (whether each league
+  has data yet, when it was last refreshed) — genuinely useful for
+  checking on a slow first load without digging through Railway's logs
 - Favorite-outcome highlighting, a match count per league, a manual refresh
   button, and a "last updated" timestamp — small UI polish on the Leagues page.
 
@@ -225,22 +226,22 @@ as they start coming in, so this fades out on its own as the season progresses.
 
 ## Loading speed
 
-Predictions are refreshed **in the background every 20 minutes**, not on
-each visitor's request — so almost everyone gets an instant response, even
-though the underlying computation (especially with corners/throw-ins/etc
-enrichment) genuinely takes a while.
+Each league is refreshed and cached **independently**, every 20 minutes,
+in the background. Whichever leagues are ready show real data immediately;
+any league still being computed shows its own loading placeholder while
+the others display normally — nobody has to wait for all 5 leagues
+together, which matters a lot in practice: with full stats enrichment
+enabled, a complete refresh across all 5 leagues can genuinely take
+**25-30+ minutes** combined (confirmed from real deploy logs, not a
+guess). Waiting for that before showing anything would be a bad
+experience; showing each league the moment it's actually ready is a much
+better one.
 
-**Important**: on a genuinely fresh deploy (nothing cached yet), the
-server never makes your browser wait on the full computation — that used
-to cause real 502 errors, since a computation that takes several minutes
-will outlast any proxy's connection timeout. Instead, the very first
-request gets an immediate "still loading" response, kicks off the real
-computation in the background, and the page automatically checks again
-every 15 seconds until real data's ready. No more 502s waiting on a cold start.
-
-**Top 5 picks** also come from this same background computation — the
-highest-confidence outcome across every match and market, ranked, not just
-a single "pick of the day."
+The server also never makes your browser wait on any of this directly —
+every request gets an immediate response with whatever's currently cached
+per league, which is what actually fixed a real 502 error we hit earlier
+(a computation that takes half an hour will always outlast a proxy's
+connection timeout if you try to wait on it directly).
 
 ### Speeding up the background refresh itself
 
@@ -255,10 +256,9 @@ don't guess, since setting this too high risks real 429 errors):
 FOOTBALL_DATA_RATE_LIMIT=30
 ```
 
-(or whatever your confirmed real limit is — 60 for higher tiers). Since
-this only affects how fast the *background* job runs, not what any
-individual visitor waits on, this mostly matters for how current the data
-stays, not for anyone's page-load experience.
+(or whatever your confirmed real limit is — 60 for higher tiers). This
+directly cuts the real 25-30 minute figure above roughly proportionally —
+30/min instead of 10/min means a full refresh takes roughly a third as long.
 
 ### Rough numbers, for the background job itself (not user-facing)
 
@@ -268,8 +268,8 @@ stays, not for anyone's page-load experience.
   detail-fetches for its teams' recent matches (up to 5 per team,
   deduped) — this can add anywhere from dozens to a couple hundred extra
   calls depending on how many teams have upcoming fixtures. At the free
-  tier's 10/min, a full refresh could take several minutes; at 30/min it's
-  roughly a third of that.
+  tier's 10/min, a full refresh across all 5 leagues took **~19+ minutes**
+  in real testing; at 30/min it should be roughly a third of that.
 
 This only happens on a genuinely cold cache — once a league's data is
 fetched, it's cached for an hour, so this isn't something that happens on

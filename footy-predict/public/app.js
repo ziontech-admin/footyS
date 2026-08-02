@@ -339,6 +339,18 @@ async function renderPredictions() {
       api("/api/predictions"),
       api("/api/accuracy").catch(() => null),
     ]);
+
+    if (data.loading) {
+      document.getElementById("predictionsArea").innerHTML = `
+        <div class="loading-first-time">
+          <div class="loading-first-time-title">Loading your leagues for the first time…</div>
+          <div class="loading-first-time-sub">This can take a few minutes on a fresh deploy — checking again automatically.</div>
+        </div>
+      `;
+      setTimeout(() => renderPredictions(), 15000); // check again shortly, no need to keep hitting refresh manually
+      return;
+    }
+
     const leagues = Array.isArray(data) ? data : (data.leagues || []);
     const generatedAt = Array.isArray(data) ? null : data.generatedAt;
     const topPicks = Array.isArray(data) ? [] : (data.topPicks || (data.pickOfTheDay ? [data.pickOfTheDay] : []));

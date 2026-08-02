@@ -332,7 +332,17 @@ async function computeOneLeague(league) {
           const goalsOverUnderPick = goalsOverUnder.overPct >= goalsOverUnder.underPct ? "over" : "under";
           newLogEntries.push({
             matchId: m.id, league: league.name, homeTeam: m.homeTeam.name, awayTeam: m.awayTeam.name, utcDate: m.utcDate,
-            resultPick, goalsOverUnderPick, goalsOverUnderLine: goalsOverUnder.overUnderLine, resolved: false,
+            resultPick, goalsOverUnderPick, goalsOverUnderLine: goalsOverUnder.overUnderLine,
+            // Every other market this app predicts, logged the same way so
+            // its real-world accuracy can be measured too — not just the
+            // result and goals markets.
+            bttsPick: prediction.bttsYesPct >= prediction.bttsNoPct ? "yes" : "no",
+            homeCleanSheetPick: prediction.homeCleanSheetPct >= 50 ? "yes" : "no",
+            awayCleanSheetPick: prediction.awayCleanSheetPct >= 50 ? "yes" : "no",
+            ...(corners ? { cornersPick: corners.overPct >= corners.underPct ? "over" : "under", cornersLine: corners.overUnderLine } : {}),
+            ...(throwIns ? { throwInsPick: throwIns.overPct >= throwIns.underPct ? "over" : "under", throwInsLine: throwIns.overUnderLine } : {}),
+            ...(cards ? { cardsPick: cards.overPct >= cards.underPct ? "over" : "under", cardsLine: cards.overUnderLine } : {}),
+            resolved: false,
           });
         }
 
@@ -365,7 +375,17 @@ async function computeOneLeague(league) {
           if (entry.resolved) return entry;
           const finishedMatch = finishedById[entry.matchId];
           if (!finishedMatch) return entry;
-          const outcome = checkPredictionOutcome(entry, finishedMatch.score.fullTime.home, finishedMatch.score.fullTime.away);
+          // Pass the real match statistics through where available (the
+          // `finished` array was enriched with them earlier) so the
+          // stat-based markets get verified too, not just goals. A match
+          // without stats simply leaves those markets unchecked rather
+          // than counting them as right or wrong.
+          const actualStats = {
+            corners: extractCorners(finishedMatch),
+            throwIns: extractThrowIns(finishedMatch),
+            cards: extractCards(finishedMatch),
+          };
+          const outcome = checkPredictionOutcome(entry, finishedMatch.score.fullTime.home, finishedMatch.score.fullTime.away, actualStats);
           return { ...entry, ...outcome, resolved: true };
         });
         setPredictionLog(updatedLog);

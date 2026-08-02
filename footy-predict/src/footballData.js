@@ -327,8 +327,72 @@ function extractThrowIns(match) {
   return { home, away };
 }
 
+// The rest of the Statistics Add-On fields — same pattern, following
+// football-data.org's snake_case naming convention (confirmed correct for
+// corner_kicks and throw_ins already). If any of these field names turn
+// out to be different once tested against a real account, that one stat
+// simply won't populate — same graceful degradation as everything else.
+function extractFouls(match) {
+  const home = match.homeTeam?.statistics?.fouls;
+  const away = match.awayTeam?.statistics?.fouls;
+  if (home == null || away == null) return null;
+  return { home, away };
+}
+
+function extractShots(match) {
+  const home = match.homeTeam?.statistics?.shots;
+  const away = match.awayTeam?.statistics?.shots;
+  if (home == null || away == null) return null;
+  return { home, away };
+}
+
+function extractOffsides(match) {
+  const home = match.homeTeam?.statistics?.offsides;
+  const away = match.awayTeam?.statistics?.offsides;
+  if (home == null || away == null) return null;
+  return { home, away };
+}
+
+function extractGoalKicks(match) {
+  const home = match.homeTeam?.statistics?.goal_kicks;
+  const away = match.awayTeam?.statistics?.goal_kicks;
+  if (home == null || away == null) return null;
+  return { home, away };
+}
+
+function extractSaves(match) {
+  const home = match.homeTeam?.statistics?.saves;
+  const away = match.awayTeam?.statistics?.saves;
+  if (home == null || away == null) return null;
+  return { home, away };
+}
+
+// Cards: football-data.org's sample data didn't show a combined "cards"
+// field explicitly — this assumes yellow_cards + red_cards as separate
+// fields, summed into one total. If the real field name differs, this
+// just won't populate, same as any other stat.
+function extractCards(match) {
+  const homeYellow = match.homeTeam?.statistics?.yellow_cards;
+  const homeRed = match.homeTeam?.statistics?.red_cards;
+  const awayYellow = match.awayTeam?.statistics?.yellow_cards;
+  const awayRed = match.awayTeam?.statistics?.red_cards;
+  if (homeYellow == null || awayYellow == null) return null;
+  return { home: homeYellow + (homeRed || 0), away: awayYellow + (awayRed || 0) };
+}
+
+// Possession isn't an over/under market (it's a percentage split that
+// always sums to 100), so this returns straight weighted-average
+// percentages rather than going through predictStatOverUnder.
+function extractPossession(match) {
+  const home = match.homeTeam?.statistics?.ball_possession;
+  const away = match.awayTeam?.statistics?.ball_possession;
+  if (home == null || away == null) return null;
+  return { home, away };
+}
+
 module.exports = {
   upcomingMatches, finishedMatches, computeStats, standings, formWeight, shrinkToMean, FORM_HALF_LIFE_DAYS,
-  computeStatAverages, extractCorners, extractThrowIns, matchDetail, enrichWithStatistics, matchIdsNeedingEnrichment,
-  previousSeasonStartYear,
+  computeStatAverages, extractCorners, extractThrowIns, extractFouls, extractShots, extractOffsides,
+  extractGoalKicks, extractSaves, extractCards, extractPossession,
+  matchDetail, enrichWithStatistics, matchIdsNeedingEnrichment, previousSeasonStartYear,
 };

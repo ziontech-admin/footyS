@@ -402,6 +402,23 @@ function accuracyBannerHtml(accuracy) {
     `<div class="explain-row"><span>Week of ${w.weekStart}</span><strong>${w.resultAccuracyPct}% <span style="color:var(--text-faint);font-weight:400">(${w.sampleSize})</span></strong></div>`
   ).join("");
 
+  // Every market's own hit rate — this is the honest answer to "is the
+  // corners model actually any good?", which a single overall number hides.
+  const markets = [
+    { name: "Result", key: "result" },
+    { name: "Goals O/U", key: "goalsOverUnder" },
+    { name: "BTTS", key: "btts" },
+    { name: "Clean sheet (home)", key: "homeCleanSheet" },
+    { name: "Clean sheet (away)", key: "awayCleanSheet" },
+    { name: "Corners", key: "corners" },
+    { name: "Throw-ins", key: "throwIns" },
+    { name: "Cards", key: "cards" },
+  ];
+  const byMarketHtml = markets
+    .filter((m) => accuracy[`${m.key}AccuracyPct`] != null)
+    .map((m) => `<div class="explain-row"><span>${m.name}</span><strong>${accuracy[`${m.key}AccuracyPct`]}% <span style="color:var(--text-faint);font-weight:400">(${accuracy[`${m.key}SampleSize`]})</span></strong></div>`)
+    .join("");
+
   return `
     <div class="accuracy-banner">
       <details class="explain">
@@ -410,6 +427,10 @@ function accuracyBannerHtml(accuracy) {
           ${accuracy.resultAccuracyPct != null ? `<strong>${accuracy.resultAccuracyPct}%</strong> correct on results (${accuracy.resultSampleSize} checked)` : ""}
           ${accuracy.goalsOverUnderAccuracyPct != null ? ` · <strong>${accuracy.goalsOverUnderAccuracyPct}%</strong> on goals O/U (${accuracy.goalsOverUnderSampleSize} checked)` : ""}
         </summary>
+        <div style="margin-top:14px">
+          <div class="explain-label">By market</div>
+          ${byMarketHtml || '<div class="explain-row"><span>Not enough data yet</span></div>'}
+        </div>
         <div class="explain-grid" style="grid-template-columns:1fr 1fr; margin-top:14px;">
           <div>
             <div class="explain-label">By league</div>

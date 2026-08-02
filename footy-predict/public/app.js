@@ -341,17 +341,11 @@ async function renderPredictions() {
     ]);
     const leagues = Array.isArray(data) ? data : (data.leagues || []);
     const generatedAt = Array.isArray(data) ? null : data.generatedAt;
-    const pickOfTheDay = Array.isArray(data) ? null : data.pickOfTheDay;
+    const topPicks = Array.isArray(data) ? [] : (data.topPicks || (data.pickOfTheDay ? [data.pickOfTheDay] : []));
     currentLeaguesData = leagues;
 
     const stamp = generatedAt ? `<div class="generated-at">Updated ${formatGeneratedAt(generatedAt)}</div>` : "";
-    const pickHtml = pickOfTheDay ? `
-      <div class="pick-of-day">
-        <div class="pick-label">🔥 Highest confidence pick today</div>
-        <div class="pick-main">${pickOfTheDay.label}</div>
-        <div class="pick-sub">${pickOfTheDay.homeTeam} vs ${pickOfTheDay.awayTeam} · ${pickOfTheDay.league} · <strong>${pickOfTheDay.pct}%</strong></div>
-      </div>
-    ` : "";
+    const pickHtml = topPicksHtml(topPicks);
     const accuracyHtml = accuracy && accuracy.totalResolved > 0 ? accuracyBannerHtml(accuracy) : "";
 
     document.getElementById("predictionsArea").innerHTML = stamp + accuracyHtml + pickHtml + renderLeagueSections();
@@ -359,6 +353,31 @@ async function renderPredictions() {
     if (e.message.includes("logged in") || e.message.includes("expired")) { setToken(null); renderLogin(); return; }
     document.getElementById("predictionsArea").innerHTML = `<div class="league-error">${e.message}</div>`;
   }
+}
+
+// Ranks #1 as the headline (same treatment as the old single pick-of-day
+// card), #2–5 as a compact numbered list underneath — one card, one glance,
+// instead of scrolling every league to find the best matches yourself.
+function topPicksHtml(topPicks) {
+  if (!topPicks || topPicks.length === 0) return "";
+  const [top, ...rest] = topPicks;
+  const restHtml = rest.map((p, i) => `
+    <div class="top-pick-row">
+      <span class="top-pick-rank">#${i + 2}</span>
+      <span class="top-pick-label">${p.label}</span>
+      <span class="top-pick-meta">${p.homeTeam} vs ${p.awayTeam} · ${p.league}</span>
+      <strong class="top-pick-pct">${p.pct}%</strong>
+    </div>
+  `).join("");
+
+  return `
+    <div class="pick-of-day">
+      <div class="pick-label">🔥 Top ${topPicks.length} highest confidence picks</div>
+      <div class="pick-main">${top.label}</div>
+      <div class="pick-sub">${top.homeTeam} vs ${top.awayTeam} · ${top.league} · <strong>${top.pct}%</strong></div>
+      ${restHtml ? `<div class="top-picks-rest">${restHtml}</div>` : ""}
+    </div>
+  `;
 }
 
 // The accuracy summary banner, expandable into per-league and per-week

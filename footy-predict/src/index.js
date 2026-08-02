@@ -6,10 +6,14 @@ const {
 } = require("./auth");
 const { sendSms } = require("./sms");
 const {
-  upcomingMatches, finishedMatches, computeStats, standings, computeStatAverages, extractCorners, extractThrowIns,
+  upcomingMatches, finishedMatches, computeStats, standings, computeStatAverages,
+  extractCorners, extractThrowIns, extractFouls, extractShots, extractOffsides, extractGoalKicks, extractSaves, extractCards, extractPossession,
   enrichWithStatistics, previousSeasonStartYear,
 } = require("./footballData");
-const { predict, predictCorners, predictThrowIns, predictGoalsOverUnder, bestOutcome } = require("./predict");
+const {
+  predict, predictCorners, predictThrowIns, predictFouls, predictShots, predictOffsides, predictGoalKicks, predictSaves, predictCards,
+  predictGoalsOverUnder, bestOutcome, calibratedLine,
+} = require("./predict");
 const {
   recentForm, checkPredictionOutcome, aggregateAccuracy, accuracyByLeague, accuracyByWeek, startOfWeekUtc, checkPickOutcome,
 } = require("./stats");
@@ -223,6 +227,13 @@ async function computeAllPredictions() {
       await enrichWithStatistics(finished, teamsInFixtures, 5);
       const cornerStats = computeStatAverages(finished, extractCorners);
       const throwInStats = computeStatAverages(finished, extractThrowIns);
+      const foulsStats = computeStatAverages(finished, extractFouls);
+      const shotsStats = computeStatAverages(finished, extractShots);
+      const offsidesStats = computeStatAverages(finished, extractOffsides);
+      const goalKicksStats = computeStatAverages(finished, extractGoalKicks);
+      const savesStats = computeStatAverages(finished, extractSaves);
+      const cardsStats = computeStatAverages(finished, extractCards);
+      const possessionStats = computeStatAverages(finished, extractPossession);
 
       const log = getPredictionLog();
       const loggedIds = new Set(log.map((e) => e.matchId));
@@ -236,20 +247,77 @@ async function computeAllPredictions() {
           awayAvgGoalsFor: awayStats.awayAvgGoalsFor, awayAvgGoalsAgainst: awayStats.awayAvgGoalsAgainst,
           leagueAvgHomeGoals: stats.leagueAvgHomeGoals, leagueAvgAwayGoals: stats.leagueAvgAwayGoals,
         });
-        const goalsOverUnder = predictGoalsOverUnder(prediction.homeExpectedGoals, prediction.awayExpectedGoals);
+        const goalsOverUnder = predictGoalsOverUnder(
+          prediction.homeExpectedGoals, prediction.awayExpectedGoals,
+          calibratedLine(stats.leagueAvgHomeGoals + stats.leagueAvgAwayGoals)
+        );
 
         let corners = null;
         if (cornerStats) {
           const homeCornerStats = cornerStats.teamStats(m.homeTeam.name);
           const awayCornerStats = cornerStats.teamStats(m.awayTeam.name);
-          corners = predictCorners(homeCornerStats.homeAvgFor, awayCornerStats.awayAvgFor);
+          corners = predictCorners(
+            homeCornerStats.homeAvgFor, awayCornerStats.awayAvgFor,
+            calibratedLine(cornerStats.leagueAvgHome + cornerStats.leagueAvgAway)
+          );
         }
 
         let throwIns = null;
         if (throwInStats) {
           const homeThrowInStats = throwInStats.teamStats(m.homeTeam.name);
           const awayThrowInStats = throwInStats.teamStats(m.awayTeam.name);
-          throwIns = predictThrowIns(homeThrowInStats.homeAvgFor, awayThrowInStats.awayAvgFor);
+          throwIns = predictThrowIns(
+            homeThrowInStats.homeAvgFor, awayThrowInStats.awayAvgFor,
+            calibratedLine(throwInStats.leagueAvgHome + throwInStats.leagueAvgAway)
+          );
+        }
+
+        let fouls = null;
+        if (foulsStats) {
+          const h = foulsStats.teamStats(m.homeTeam.name), a = foulsStats.teamStats(m.awayTeam.name);
+          fouls = predictFouls(h.homeAvgFor, a.awayAvgFor, calibratedLine(foulsStats.leagueAvgHome + foulsStats.leagueAvgAway));
+        }
+
+        let shots = null;
+        if (shotsStats) {
+          const h = shotsStats.teamStats(m.homeTeam.name), a = shotsStats.teamStats(m.awayTeam.name);
+          shots = predictShots(h.homeAvgFor, a.awayAvgFor, calibratedLine(shotsStats.leagueAvgHome + shotsStats.leagueAvgAway));
+        }
+
+        let offsides = null;
+        if (offsidesStats) {
+          const h = offsidesStats.teamStats(m.homeTeam.name), a = offsidesStats.teamStats(m.awayTeam.name);
+          offsides = predictOffsides(h.homeAvgFor, a.awayAvgFor, calibratedLine(offsidesStats.leagueAvgHome + offsidesStats.leagueAvgAway));
+        }
+
+        let goalKicks = null;
+        if (goalKicksStats) {
+          const h = goalKicksStats.teamStats(m.homeTeam.name), a = goalKicksStats.teamStats(m.awayTeam.name);
+          goalKicks = predictGoalKicks(h.homeAvgFor, a.awayAvgFor, calibratedLine(goalKicksStats.leagueAvgHome + goalKicksStats.leagueAvgAway));
+        }
+
+        let saves = null;
+        if (savesStats) {
+          const h = savesStats.teamStats(m.homeTeam.name), a = savesStats.teamStats(m.awayTeam.name);
+          saves = predictSaves(h.homeAvgFor, a.awayAvgFor, calibratedLine(savesStats.leagueAvgHome + savesStats.leagueAvgAway));
+        }
+
+        let cards = null;
+        if (cardsStats) {
+          const h = cardsStats.teamStats(m.homeTeam.name), a = cardsStats.teamStats(m.awayTeam.name);
+          cards = predictCards(h.homeAvgFor, a.awayAvgFor, calibratedLine(cardsStats.leagueAvgHome + cardsStats.leagueAvgAway));
+        }
+
+        // Possession isn't an over/under market — just weighted-average
+        // percentages, normalized so they sum to exactly 100.
+        let possession = null;
+        if (possessionStats) {
+          const h = possessionStats.teamStats(m.homeTeam.name), a = possessionStats.teamStats(m.awayTeam.name);
+          const homeRaw = h.homeAvgFor, awayRaw = a.awayAvgFor;
+          const total = homeRaw + awayRaw;
+          possession = total > 0
+            ? { home: Math.round((homeRaw / total) * 1000) / 10, away: Math.round((awayRaw / total) * 1000) / 10 }
+            : { home: 50, away: 50 };
         }
 
         if (!loggedIds.has(m.id)) {
@@ -268,7 +336,7 @@ async function computeAllPredictions() {
           homeCrest: m.homeTeam.crest, awayCrest: m.awayTeam.crest,
           homeForm: recentForm(finished, m.homeTeam.name), awayForm: recentForm(finished, m.awayTeam.name),
           homePosition: table[m.homeTeam.name] || null, awayPosition: table[m.awayTeam.name] || null,
-          prediction, goalsOverUnder, corners, throwIns,
+          prediction, goalsOverUnder, corners, throwIns, fouls, shots, offsides, goalKicks, saves, cards, possession,
           explain: {
             homeAvgGoalsFor: Math.round(homeStats.homeAvgGoalsFor * 100) / 100,
             homeAvgGoalsAgainst: Math.round(homeStats.homeAvgGoalsAgainst * 100) / 100,

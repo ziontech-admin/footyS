@@ -156,6 +156,7 @@ function matchCardHtml(m) {
   const p = m.prediction;
   const c = m.corners;
   const t = m.throwIns;
+  const cd = m.cards;
   const fav = favOutcome(p);
   const conf = m.confidence || "medium";
   return `
@@ -212,8 +213,35 @@ function matchCardHtml(m) {
           <span>O/U ${t.overUnderLine}: <strong>${t.overPct}%</strong> over · <strong>${t.underPct}%</strong> under</span>
         </div>
       ` : ""}
+      ${cd ? `
+        <div class="corners-row">
+          <span>🟨 Cards: ~${cd.totalExpectedCards} expected</span>
+          <span>O/U ${cd.overUnderLine}: <strong>${cd.overPct}%</strong> over · <strong>${cd.underPct}%</strong> under</span>
+        </div>
+      ` : ""}
+      ${moreStatsHtml(m)}
       ${explainHtml(m.explain)}
     </div>
+  `;
+}
+
+// Fouls, shots, offsides, goal-kicks, saves, and possession — real markets,
+// but less commonly cared about than corners/cards, so they're tucked into
+// their own expandable panel instead of always taking up space on the card.
+function moreStatsHtml(m) {
+  const rows = [];
+  if (m.fouls) rows.push(`<div class="explain-row"><span>Fouls</span><strong>~${m.fouls.totalExpectedFouls} · O/U ${m.fouls.overUnderLine}: ${m.fouls.overPct}% / ${m.fouls.underPct}%</strong></div>`);
+  if (m.shots) rows.push(`<div class="explain-row"><span>Shots</span><strong>~${m.shots.totalExpectedShots} · O/U ${m.shots.overUnderLine}: ${m.shots.overPct}% / ${m.shots.underPct}%</strong></div>`);
+  if (m.offsides) rows.push(`<div class="explain-row"><span>Offsides</span><strong>~${m.offsides.totalExpectedOffsides} · O/U ${m.offsides.overUnderLine}: ${m.offsides.overPct}% / ${m.offsides.underPct}%</strong></div>`);
+  if (m.goalKicks) rows.push(`<div class="explain-row"><span>Goal kicks</span><strong>~${m.goalKicks.totalExpectedGoalKicks} · O/U ${m.goalKicks.overUnderLine}: ${m.goalKicks.overPct}% / ${m.goalKicks.underPct}%</strong></div>`);
+  if (m.saves) rows.push(`<div class="explain-row"><span>Saves</span><strong>~${m.saves.totalExpectedSaves} · O/U ${m.saves.overUnderLine}: ${m.saves.overPct}% / ${m.saves.underPct}%</strong></div>`);
+  if (m.possession) rows.push(`<div class="explain-row"><span>Possession</span><strong>${m.homeTeam} ${m.possession.home}% – ${m.possession.away}% ${m.awayTeam}</strong></div>`);
+  if (rows.length === 0) return "";
+  return `
+    <details class="explain">
+      <summary>More stats (${rows.length})</summary>
+      <div style="margin-top:10px">${rows.join("")}</div>
+    </details>
   `;
 }
 

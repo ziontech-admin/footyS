@@ -560,6 +560,14 @@ button.secondary:hover { background: #262b37; border-color: var(--border-hover);
   font-size: 14px;
 }
 
+.loading-first-time {
+  text-align: center;
+  padding: 60px 20px;
+  animation: fadeIn 0.3s ease;
+}
+.loading-first-time-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+.loading-first-time-sub { font-size: 13px; color: var(--text-dim); }
+
 .skeleton-card {
   background: var(--card);
   border: 1px solid var(--border);

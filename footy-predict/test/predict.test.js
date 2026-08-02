@@ -300,3 +300,78 @@ describe("predictThrowIns", () => {
     assert.equal(result.totalExpectedThrowIns, 25.5);
   });
 });
+
+describe("calibratedLine", () => {
+  const { calibratedLine } = require("../src/predict");
+
+  test("finds the nearest X.5 line above the average", () => {
+    assert.equal(calibratedLine(2.7), 2.5);
+    assert.equal(calibratedLine(2.2), 2.5);
+  });
+
+  test("finds the nearest X.5 line below the average when closer", () => {
+    assert.equal(calibratedLine(1.9), 1.5);
+    assert.equal(calibratedLine(3.4), 3.5);
+  });
+
+  test("a league averaging much higher than the old hardcoded default gets a proportionally higher line", () => {
+    assert.equal(calibratedLine(31.3), 31.5); // this is the actual throw-ins case that prompted this fix
+  });
+
+  test("handles exact X.0 averages sensibly", () => {
+    assert.equal(calibratedLine(3.0), 3.5); // exactly halfway between 2.5 and 3.5; rounds up (JS's Math.round rounds .5 up)
+  });
+
+  test("falls back to a sane default for missing or invalid data", () => {
+    assert.equal(calibratedLine(0), 2.5);
+    assert.equal(calibratedLine(null), 2.5);
+    assert.equal(calibratedLine(NaN), 2.5);
+    assert.equal(calibratedLine(-1), 2.5);
+  });
+});
+
+describe("predictStatOverUnder (shared core) and the new stat wrappers", () => {
+  const { predictStatOverUnder, predictFouls, predictShots, predictOffsides, predictGoalKicks, predictSaves, predictCards } = require("../src/predict");
+
+  test("predictStatOverUnder: over/under sum to almost exactly 100", () => {
+    const r = predictStatOverUnder(12, 10, 22.5);
+    assert.ok(Math.abs(r.overPct + r.underPct - 100) < 0.5);
+  });
+
+  test("predictFouls returns correctly-named fields", () => {
+    const r = predictFouls(12, 10, 22.5);
+    assert.equal(r.totalExpectedFouls, 22);
+    assert.ok(r.overPct !== undefined && r.underPct !== undefined);
+  });
+
+  test("predictShots returns correctly-named fields", () => {
+    const r = predictShots(13, 11, 24.5);
+    assert.equal(r.totalExpectedShots, 24);
+  });
+
+  test("predictOffsides returns correctly-named fields", () => {
+    const r = predictOffsides(2, 1.5, 3.5);
+    assert.equal(r.totalExpectedOffsides, 3.5);
+  });
+
+  test("predictGoalKicks returns correctly-named fields", () => {
+    const r = predictGoalKicks(8, 7.5, 15.5);
+    assert.equal(r.totalExpectedGoalKicks, 15.5);
+  });
+
+  test("predictSaves returns correctly-named fields", () => {
+    const r = predictSaves(3.5, 3, 6.5);
+    assert.equal(r.totalExpectedSaves, 6.5);
+  });
+
+  test("predictCards returns correctly-named fields", () => {
+    const r = predictCards(2, 1.5, 3.5);
+    assert.equal(r.totalExpectedCards, 3.5);
+  });
+
+  test("a high combined expected total favors the over, consistently across all new stat types", () => {
+    assert.ok(predictFouls(15, 14, 22.5).overPct > 50);
+    assert.ok(predictShots(16, 15, 24.5).overPct > 50);
+    assert.ok(predictCards(3, 2.5, 3.5).overPct > 50);
+  });
+});

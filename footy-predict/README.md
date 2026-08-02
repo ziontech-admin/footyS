@@ -64,9 +64,20 @@ paid API call just for a text message.)
 ## Accuracy, one level deeper
 
 The accuracy banner is now expandable — click it to see accuracy broken out
-**by league** (the model might genuinely be better at some leagues than
-others) and **by week** (so you can see if it's trending up or down over
-time), not just one lifetime running total.
+**by market**, **by league** (the model might genuinely be better at some
+leagues than others) and **by week** (so you can see if it's trending up or
+down over time), not just one lifetime running total.
+
+**By market** is the important one: every market this app predicts —
+result, goals O/U, BTTS, clean sheets, corners, throw-ins, and cards — is
+individually checked against what actually happened and gets its own hit
+rate. That's the honest answer to "is the corners model actually any
+good?", which a single blended number would hide completely.
+
+A market is only counted once it can genuinely be verified. Corners,
+throw-ins, and cards need the real match statistics to have come through;
+if they didn't for a given match, that market is left unchecked for it
+rather than being counted as right or wrong.
 
 ## Forgot password
 

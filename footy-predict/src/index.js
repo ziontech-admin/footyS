@@ -371,15 +371,19 @@ async function computeAllPredictions() {
     }
   }));
 
-  let pickOfTheDay = null;
+  // Every match's single best outcome, ranked highest-confidence first —
+  // pickOfTheDay is just this list's #1, kept separate for backward
+  // compatibility with anything already relying on that single object.
+  const allOutcomes = [];
   results.forEach((league) => {
     league.matches.forEach((m) => {
       const outcome = bestOutcome(m);
-      if (!pickOfTheDay || outcome.pct > pickOfTheDay.pct) {
-        pickOfTheDay = { ...outcome, matchId: m.id, league: league.league, homeTeam: m.homeTeam, awayTeam: m.awayTeam, utcDate: m.utcDate };
-      }
+      allOutcomes.push({ ...outcome, matchId: m.id, league: league.league, homeTeam: m.homeTeam, awayTeam: m.awayTeam, utcDate: m.utcDate });
     });
   });
+  allOutcomes.sort((a, b) => b.pct - a.pct);
+  const pickOfTheDay = allOutcomes[0] || null;
+  const topPicks = allOutcomes.slice(0, 5);
 
   // A combined lookup of every finished match across every league, by ID —
   // used to check pending pick-of-the-day notifications against reality.
@@ -390,7 +394,7 @@ async function computeAllPredictions() {
   // above, the API response and callers don't need it.
   const leagues = results.map(({ finished, ...rest }) => rest);
 
-  return { leagues, pickOfTheDay, allFinishedById };
+  return { leagues, pickOfTheDay, topPicks, allFinishedById };
 }
 
 // Tracks today's pick-of-the-day (if it's a new match) and checks any
@@ -441,10 +445,45 @@ async function smsAllUsers(text) {
   }));
 }
 
+// Predictions are expensive to compute (throttled API calls, especially
+// with corners/throw-ins/etc enrichment) — far too slow to make every
+// visitor wait on directly. Instead, this cache is refreshed in the
+// background on a timer, and the route just serves whatever's cached,
+// instantly. Only the very first request after a fresh deploy (before the
+// background job has run once) has to wait on a real computation.
+let cachedPredictionsResult = null;
+let cachedPredictionsGeneratedAt = null;
+let refreshInProgress = null;
+
+async function refreshPredictionsCache() {
+  if (refreshInProgress) return refreshInProgress; // don't stack up parallel refreshes
+  refreshInProgress = (async () => {
+    try {
+      const result = await computeAllPredictions();
+      cachedPredictionsResult = result;
+      cachedPredictionsGeneratedAt = new Date().toISOString();
+      processPickTracking(result.pickOfTheDay, result.allFinishedById).catch((err) => console.error("Pick tracking failed:", err.message));
+    } catch (err) {
+      console.error("Predictions cache refresh failed:", err.message);
+    } finally {
+      refreshInProgress = null;
+    }
+  })();
+  return refreshInProgress;
+}
+
+const PREDICTIONS_REFRESH_INTERVAL_MS = 20 * 60 * 1000; // 20 minutes
+setInterval(() => refreshPredictionsCache(), PREDICTIONS_REFRESH_INTERVAL_MS);
+refreshPredictionsCache(); // kick off the first one immediately on boot, don't wait for the first visitor
+
 app.get("/api/predictions", requireAuth, async (req, res) => {
-  const { leagues, pickOfTheDay, allFinishedById } = await computeAllPredictions();
-  processPickTracking(pickOfTheDay, allFinishedById).catch((err) => console.error("Pick tracking failed:", err.message));
-  res.json({ generatedAt: new Date().toISOString(), leagues, pickOfTheDay });
+  if (!cachedPredictionsResult) {
+    // Nothing cached yet (server just booted) — this request has to wait
+    // on the real thing. Everyone after this gets it instantly.
+    await refreshPredictionsCache();
+  }
+  const { leagues, pickOfTheDay, topPicks } = cachedPredictionsResult || { leagues: [], pickOfTheDay: null, topPicks: [] };
+  res.json({ generatedAt: cachedPredictionsGeneratedAt, leagues, pickOfTheDay, topPicks });
 });
 
 // Overall prediction accuracy so far, plus a per-league and per-week

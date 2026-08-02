@@ -107,8 +107,30 @@ fetched once) to build the corner/throw-in averages. That's a genuine
 increase in API calls compared to goals, which come free from the league
 list. See "Cold start timing" below for what this means in practice.
 
-**Goals over/under** (free — reuses the same expected-goals numbers above)
-predicts the combined total against a 2.5 line.
+**Fouls, shots, offsides, goal kicks, saves, cards, and possession** —
+your Deep Data + Statistics Add-On plan actually covers all of these, and
+Footy Predict now uses them all. **Cards** shows on every match card like
+corners and throw-ins do. The rest (fouls, shots, offsides, goal kicks,
+saves, possession) live in a "More stats" expandable panel on each card,
+to keep the main view from getting cluttered. All of this comes from the
+exact same per-match detail fetch already being done for corners/throw-ins
+— no additional API calls beyond what was already needed.
+
+One honest caveat: the exact field names for these newer stats
+(`fouls`, `shots`, `offsides`, `goal_kicks`, `saves`, `yellow_cards`,
+`red_cards`, `ball_possession`) are a best-effort guess based on
+football-data.org's naming pattern — confirmed correct for `corner_kicks`
+and `throw_ins` already, but not independently verified for the rest.
+If any of these don't show up once deployed, that field name is the first
+thing to check.
+
+**Goals, corners, and throw-ins over/under** all use a **calibrated line**
+per league — instead of one fixed number everywhere (e.g. always 2.5
+goals), each league's line is set to the nearest X.5 to that league's own
+real average. A league that genuinely runs high-scoring gets a higher
+line automatically; a defensive one gets a lower one. This is what fixes
+a real issue we found early on: a flat 25.5 throw-ins line looked wildly
+lopsided (99%+) for a league that actually averages closer to 31.
 
 **Highest confidence pick** scans every outcome across every match and
 league and surfaces whichever single number is the strongest statistical

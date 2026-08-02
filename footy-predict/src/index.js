@@ -54,6 +54,12 @@ app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
     time: new Date().toISOString(),
+    leagueCache: LEAGUES.map((league) => ({
+      league: league.name,
+      hasData: Boolean(leagueCache[league.code]),
+      generatedAt: leagueCache[league.code]?.generatedAt || null,
+      refreshInProgress: Boolean(leagueRefreshInProgress[league.code]),
+    })),
   });
 });
 
@@ -177,21 +183,21 @@ function sampleConfidence(homeGames, awayGames) {
   return "low";
 }
 
-// The whole "gather predictions for every league" pipeline, factored out so
-// it can be reused both by the /api/predictions route and by the weekly
-// digest / result check-in background job — a background job has no HTTP
-// request to hang off, so it needs to call this directly.
-async function computeAllPredictions() {
-  const results = await Promise.all(LEAGUES.map(async (league) => {
-    try {
-      const [fixtures, currentSeasonFinished, table] = await Promise.all([
-        upcomingMatches(league.code, 10),
-        finishedMatches(league.code),
-        standings(league.code).catch(() => ({})),
-      ]);
+// Computes one league's full picture — fixtures, predictions, all the
+// stats markets, logging, and reconciliation. Split out on its own so each
+// league can be cached and served independently as it finishes, rather
+// than making every visitor wait for all 5 leagues together (which, with
+// full stats enrichment, can genuinely take 25-30+ minutes combined).
+async function computeOneLeague(league) {
+  try {
+    const [fixtures, currentSeasonFinished, table] = await Promise.all([
+      upcomingMatches(league.code, 10),
+      finishedMatches(league.code),
+      standings(league.code).catch(() => ({})),
+    ]);
 
-      // At the very start of a season (which football-data.org marks as
-      // "current" up to 30 days before it even begins), there may be
+    // At the very start of a season (which football-data.org marks as
+    // "current" up to 30 days before it even begins), there may be
       // few or no finished matches yet — every team would otherwise fall
       // back to the same generic default, making every prediction look
       // identical. Bridge in last season's results in that case; recency
@@ -365,17 +371,58 @@ async function computeAllPredictions() {
         setPredictionLog(updatedLog);
       }
 
-      return { league: league.name, code: league.code, matches, error: null, finished };
-    } catch (err) {
-      return { league: league.name, code: league.code, matches: [], error: err.message, finished: [] };
-    }
-  }));
+    return { league: league.name, code: league.code, matches, error: null, finished };
+  } catch (err) {
+    return { league: league.name, code: league.code, matches: [], error: err.message, finished: [] };
+  }
+}
 
-  // Every match's single best outcome, ranked highest-confidence first —
-  // pickOfTheDay is just this list's #1, kept separate for backward
-  // compatibility with anything already relying on that single object.
+// Per-league cache — each league is refreshed and served independently, so
+// nobody has to wait for all 5 leagues together (which, with full stats
+// enrichment, can take 25-30+ minutes combined). A league that finished
+// computing 2 minutes ago is shown immediately, even if others are still
+// in progress.
+const leagueCache = {}; // code -> { result, generatedAt }
+const leagueRefreshInProgress = {}; // code -> Promise, prevents stacking duplicate refreshes per league
+
+async function refreshLeague(league) {
+  if (leagueRefreshInProgress[league.code]) return leagueRefreshInProgress[league.code];
+  leagueRefreshInProgress[league.code] = (async () => {
+    try {
+      const result = await computeOneLeague(league);
+      leagueCache[league.code] = { result, generatedAt: new Date().toISOString() };
+    } catch (err) {
+      console.error(`${league.name}: refresh failed:`, err.message);
+    } finally {
+      leagueRefreshInProgress[league.code] = null;
+    }
+  })();
+  return leagueRefreshInProgress[league.code];
+}
+
+async function refreshAllLeagues() {
+  await Promise.all(LEAGUES.map((league) => refreshLeague(league)));
+  const picture = assembleCurrentPicture();
+  if (!picture.loading) {
+    processPickTracking(picture.pickOfTheDay, picture.allFinishedById).catch((err) => console.error("Pick tracking failed:", err.message));
+  }
+}
+
+// Assembles whatever's currently cached into the full picture the frontend
+// expects — leagues not yet computed show as `loading: true` rather than
+// holding up the ones that are ready. pickOfTheDay/topPicks are scanned
+// fresh from whatever's currently available (pure JS, no API calls, cheap
+// to recompute on every request).
+function assembleCurrentPicture() {
+  const leagues = LEAGUES.map((league) => {
+    const cached = leagueCache[league.code];
+    if (!cached) return { league: league.name, code: league.code, matches: [], error: null, loading: true };
+    const { finished, ...rest } = cached.result;
+    return rest;
+  });
+
   const allOutcomes = [];
-  results.forEach((league) => {
+  leagues.forEach((league) => {
     league.matches.forEach((m) => {
       const outcome = bestOutcome(m);
       allOutcomes.push({ ...outcome, matchId: m.id, league: league.league, homeTeam: m.homeTeam, awayTeam: m.awayTeam, utcDate: m.utcDate });
@@ -385,16 +432,16 @@ async function computeAllPredictions() {
   const pickOfTheDay = allOutcomes[0] || null;
   const topPicks = allOutcomes.slice(0, 5);
 
-  // A combined lookup of every finished match across every league, by ID —
-  // used to check pending pick-of-the-day notifications against reality.
   const allFinishedById = {};
-  results.forEach((league) => { league.finished.forEach((f) => { allFinishedById[f.id] = f; }); });
+  LEAGUES.forEach((league) => {
+    const cached = leagueCache[league.code];
+    if (cached) cached.result.finished.forEach((f) => { allFinishedById[f.id] = f; });
+  });
 
-  // Strip the internal `finished` field before returning — it's only used
-  // above, the API response and callers don't need it.
-  const leagues = results.map(({ finished, ...rest }) => rest);
+  const anyLoading = leagues.some((l) => l.loading);
+  const generatedAt = anyLoading ? null : new Date().toISOString();
 
-  return { leagues, pickOfTheDay, topPicks, allFinishedById };
+  return { leagues, pickOfTheDay, topPicks, allFinishedById, loading: anyLoading, generatedAt };
 }
 
 // Tracks today's pick-of-the-day (if it's a new match) and checks any
@@ -445,50 +492,25 @@ async function smsAllUsers(text) {
   }));
 }
 
-// Predictions are expensive to compute (throttled API calls, especially
-// with corners/throw-ins/etc enrichment) — far too slow to make every
-// visitor wait on directly. Instead, this cache is refreshed in the
-// background on a timer, and the route just serves whatever's cached,
-// instantly. Only the very first request after a fresh deploy (before the
-// background job has run once) has to wait on a real computation.
-let cachedPredictionsResult = null;
-let cachedPredictionsGeneratedAt = null;
-let refreshInProgress = null;
-
-async function refreshPredictionsCache() {
-  if (refreshInProgress) return refreshInProgress; // don't stack up parallel refreshes
-  refreshInProgress = (async () => {
-    try {
-      const result = await computeAllPredictions();
-      cachedPredictionsResult = result;
-      cachedPredictionsGeneratedAt = new Date().toISOString();
-      processPickTracking(result.pickOfTheDay, result.allFinishedById).catch((err) => console.error("Pick tracking failed:", err.message));
-    } catch (err) {
-      console.error("Predictions cache refresh failed:", err.message);
-    } finally {
-      refreshInProgress = null;
-    }
-  })();
-  return refreshInProgress;
-}
-
+// Kick off a refresh of every league immediately on boot (each one caches
+// itself independently as it finishes — see refreshLeague/leagueCache
+// above), then again on a timer. Leagues that already have data keep
+// serving it while a refresh is in progress; nobody has to wait.
 const PREDICTIONS_REFRESH_INTERVAL_MS = 20 * 60 * 1000; // 20 minutes
-setInterval(() => refreshPredictionsCache(), PREDICTIONS_REFRESH_INTERVAL_MS);
-refreshPredictionsCache(); // kick off the first one immediately on boot, don't wait for the first visitor
+setInterval(() => refreshAllLeagues(), PREDICTIONS_REFRESH_INTERVAL_MS);
+refreshAllLeagues(); // don't wait for the first visitor to trigger this
 
 app.get("/api/predictions", requireAuth, (req, res) => {
-  // Never make the HTTP request itself wait on the full computation — a
-  // fresh deploy's first computation can take several minutes, and no
-  // proxy will hold a connection open that long (this is exactly what
-  // caused a 502 before this fix). If nothing's cached yet, kick off a
-  // refresh in the background and respond immediately with `loading:
-  // true` — the frontend can poll again shortly after.
-  if (!cachedPredictionsResult) {
-    refreshPredictionsCache().catch(() => {}); // fire and forget; refreshInProgress prevents duplicates
-    return res.json({ generatedAt: null, leagues: [], pickOfTheDay: null, topPicks: [], loading: true });
-  }
-  const { leagues, pickOfTheDay, topPicks } = cachedPredictionsResult;
-  res.json({ generatedAt: cachedPredictionsGeneratedAt, leagues, pickOfTheDay, topPicks });
+  // Never make the HTTP request wait on the full computation — with 5
+  // leagues' worth of stats enrichment, that can take 25-30+ minutes
+  // combined, far longer than any proxy will hold a connection open (this
+  // is exactly what caused a 502 before this fix). Each league is now
+  // cached independently, so this always responds immediately with
+  // whichever leagues are ready and marks the rest `loading: true` rather
+  // than making everyone wait for all 5 together.
+  LEAGUES.forEach((league) => { if (!leagueCache[league.code]) refreshLeague(league).catch(() => {}); });
+  const picture = assembleCurrentPicture();
+  res.json(picture);
 });
 
 // Overall prediction accuracy so far, plus a per-league and per-week
@@ -565,7 +587,8 @@ async function checkWeeklyDigest() {
     const currentWeek = startOfWeekUtc(now);
     if (getLastWeeklyDigestWeek() === currentWeek) return; // already sent this week
 
-    const { pickOfTheDay, allFinishedById } = await computeAllPredictions();
+    const { pickOfTheDay, allFinishedById, loading } = assembleCurrentPicture();
+    if (loading) return; // not enough data cached yet to send a meaningful digest this hour — try again next hour
     await processPickTracking(pickOfTheDay, allFinishedById);
     if (pickOfTheDay) {
       await smsAllUsers(`Footy Predict: This weekend's highest-confidence pick — ${pickOfTheDay.label} (${pickOfTheDay.homeTeam} vs ${pickOfTheDay.awayTeam}, ${pickOfTheDay.pct}%).`);

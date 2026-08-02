@@ -174,3 +174,114 @@ describe("extractThrowIns", () => {
     assert.ok(result.teamStats("A").homeAvgFor > 0);
   });
 });
+
+describe("matchIdsNeedingEnrichment", () => {
+  const { matchIdsNeedingEnrichment } = require("../src/footballData");
+
+  function fakeMatch(id, homeTeam, awayTeam, utcDate) {
+    return { id, homeTeam: { name: homeTeam }, awayTeam: { name: awayTeam }, utcDate };
+  }
+
+  test("selects only the given teams' matches, ignoring unrelated ones", () => {
+    const finished = [
+      fakeMatch(1, "A", "B", "2026-01-01"),
+      fakeMatch(2, "C", "D", "2026-01-02"), // neither team is in our list
+    ];
+    const ids = matchIdsNeedingEnrichment(finished, ["A"], 5);
+    assert.deepEqual(ids, [1]);
+  });
+
+  test("respects the per-team limit, taking most recent matches first", () => {
+    const finished = [
+      fakeMatch(1, "A", "X", "2026-01-01"),
+      fakeMatch(2, "A", "Y", "2026-02-01"),
+      fakeMatch(3, "A", "Z", "2026-03-01"),
+    ];
+    const ids = matchIdsNeedingEnrichment(finished, ["A"], 2);
+    assert.equal(ids.length, 2);
+    assert.ok(ids.includes(3)); // most recent
+    assert.ok(ids.includes(2)); // second most recent
+    assert.ok(!ids.includes(1)); // oldest, beyond the limit of 2
+  });
+
+  test("dedupes a match shared between two teams that are both in our list", () => {
+    const finished = [fakeMatch(1, "A", "B", "2026-01-01")];
+    const ids = matchIdsNeedingEnrichment(finished, ["A", "B"], 5);
+    assert.deepEqual(ids, [1]); // not fetched twice just because both teams need it
+  });
+
+  test("returns an empty list when none of the given teams have any finished matches", () => {
+    const finished = [fakeMatch(1, "X", "Y", "2026-01-01")];
+    const ids = matchIdsNeedingEnrichment(finished, ["A", "B"], 5);
+    assert.deepEqual(ids, []);
+  });
+});
+
+describe("previousSeasonStartYear", () => {
+  const { previousSeasonStartYear } = require("../src/footballData");
+
+  test("returns the year before the current season's start date", () => {
+    const fixtures = [{ season: { startDate: "2026-08-15" } }];
+    assert.equal(previousSeasonStartYear(fixtures), 2025);
+  });
+
+  test("returns null when there are no fixtures at all", () => {
+    assert.equal(previousSeasonStartYear([]), null);
+  });
+
+  test("returns null when a fixture exists but has no season data", () => {
+    assert.equal(previousSeasonStartYear([{}]), null);
+  });
+});
+
+describe("the remaining Statistics Add-On extractors", () => {
+  const { extractFouls, extractShots, extractOffsides, extractGoalKicks, extractSaves, extractCards, extractPossession } = require("../src/footballData");
+
+  function matchWithStats(homeStats, awayStats) {
+    return { homeTeam: { name: "A", statistics: homeStats }, awayTeam: { name: "B", statistics: awayStats } };
+  }
+
+  test("extractFouls returns real numbers when present, null otherwise", () => {
+    assert.deepEqual(extractFouls(matchWithStats({ fouls: 12 }, { fouls: 10 })), { home: 12, away: 10 });
+    assert.equal(extractFouls(matchWithStats({}, {})), null);
+  });
+
+  test("extractShots returns real numbers when present, null otherwise", () => {
+    assert.deepEqual(extractShots(matchWithStats({ shots: 14 }, { shots: 9 })), { home: 14, away: 9 });
+    assert.equal(extractShots(matchWithStats({}, {})), null);
+  });
+
+  test("extractOffsides returns real numbers when present, null otherwise", () => {
+    assert.deepEqual(extractOffsides(matchWithStats({ offsides: 3 }, { offsides: 1 })), { home: 3, away: 1 });
+    assert.equal(extractOffsides(matchWithStats({}, {})), null);
+  });
+
+  test("extractGoalKicks returns real numbers when present, null otherwise", () => {
+    assert.deepEqual(extractGoalKicks(matchWithStats({ goal_kicks: 8 }, { goal_kicks: 6 })), { home: 8, away: 6 });
+    assert.equal(extractGoalKicks(matchWithStats({}, {})), null);
+  });
+
+  test("extractSaves returns real numbers when present, null otherwise", () => {
+    assert.deepEqual(extractSaves(matchWithStats({ saves: 4 }, { saves: 2 })), { home: 4, away: 2 });
+    assert.equal(extractSaves(matchWithStats({}, {})), null);
+  });
+
+  test("extractCards sums yellow and red cards together", () => {
+    const result = extractCards(matchWithStats({ yellow_cards: 2, red_cards: 1 }, { yellow_cards: 3, red_cards: 0 }));
+    assert.deepEqual(result, { home: 3, away: 3 });
+  });
+
+  test("extractCards treats a missing red_cards field as zero, not a failure", () => {
+    const result = extractCards(matchWithStats({ yellow_cards: 2 }, { yellow_cards: 1 }));
+    assert.deepEqual(result, { home: 2, away: 1 });
+  });
+
+  test("extractCards returns null when yellow_cards itself is missing", () => {
+    assert.equal(extractCards(matchWithStats({}, {})), null);
+  });
+
+  test("extractPossession returns real percentages when present, null otherwise", () => {
+    assert.deepEqual(extractPossession(matchWithStats({ ball_possession: 55 }, { ball_possession: 45 })), { home: 55, away: 45 });
+    assert.equal(extractPossession(matchWithStats({}, {})), null);
+  });
+});

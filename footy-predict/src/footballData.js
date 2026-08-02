@@ -14,10 +14,17 @@ const FORM_HALF_LIFE_DAYS = 70;
 
 const cache = new Map();
 
-// 7 seconds between requests = ~8.5/minute, comfortably under the 10/minute
-// free-tier cap with margin for other traffic (e.g. a second person loading
-// the app at the same time).
-const MIN_REQUEST_INTERVAL_MS = 7000;
+// Throttle speed is configurable via FOOTBALL_DATA_RATE_LIMIT (requests per
+// minute your actual plan allows) — defaults to 10 (the free tier's
+// documented limit) if not set, which is always safe even on a paid plan,
+// just slower than necessary. If you're on a paid plan with a confirmed
+// higher limit (e.g. 30/min on Standard, 60/min above that), set this env
+// var to speed things up — genuinely faster loading, not a guess.
+const RATE_LIMIT_PER_MIN = Number(process.env.FOOTBALL_DATA_RATE_LIMIT) || 10;
+// 85% of the theoretical max, leaving margin for other traffic (e.g. a
+// second person loading the app, or the weekly digest job) sharing the
+// same per-account limit at the same time.
+const MIN_REQUEST_INTERVAL_MS = Math.ceil(60000 / (RATE_LIMIT_PER_MIN * 0.85));
 let requestQueue = Promise.resolve();
 let lastRequestAt = 0;
 

@@ -25,7 +25,13 @@ function recentForm(matches, teamName, count = 5) {
 // prediction was correct. Any market not present in the logged prediction
 // (e.g. corners, if that wasn't enabled at prediction time) is simply
 // omitted from the result rather than guessed at.
-function checkPredictionOutcome(logged, actualHomeGoals, actualAwayGoals) {
+// `actualStats` is optional — pass { corners: {home, away}, throwIns: {...},
+// cards: {...} } when the finished match's real statistics are available,
+// and those markets get checked too. Without it, only the goal-derived
+// markets (result, goals O/U, BTTS, clean sheets) are checked — which is
+// exactly the right behavior, since a market we can't verify shouldn't be
+// silently counted as either right or wrong.
+function checkPredictionOutcome(logged, actualHomeGoals, actualAwayGoals, actualStats) {
   const result = {};
 
   if (logged.resultPick) {
@@ -39,6 +45,37 @@ function checkPredictionOutcome(logged, actualHomeGoals, actualAwayGoals) {
     result.goalsOverUnderCorrect = logged.goalsOverUnderPick === actualSide;
   }
 
+  // Both teams to score — derivable from the score alone, no stats needed.
+  if (logged.bttsPick) {
+    const actualSide = actualHomeGoals >= 1 && actualAwayGoals >= 1 ? "yes" : "no";
+    result.bttsCorrect = logged.bttsPick === actualSide;
+  }
+
+  // Clean sheets — also purely goal-derived.
+  if (logged.homeCleanSheetPick) {
+    const actualSide = actualAwayGoals === 0 ? "yes" : "no";
+    result.homeCleanSheetCorrect = logged.homeCleanSheetPick === actualSide;
+  }
+  if (logged.awayCleanSheetPick) {
+    const actualSide = actualHomeGoals === 0 ? "yes" : "no";
+    result.awayCleanSheetCorrect = logged.awayCleanSheetPick === actualSide;
+  }
+
+  // Stat-based markets — only checkable when the real match statistics
+  // came through (Statistics Add-On active, match detail fetched).
+  const statMarkets = [
+    { pickKey: "cornersPick", lineKey: "cornersLine", statKey: "corners", resultKey: "cornersCorrect" },
+    { pickKey: "throwInsPick", lineKey: "throwInsLine", statKey: "throwIns", resultKey: "throwInsCorrect" },
+    { pickKey: "cardsPick", lineKey: "cardsLine", statKey: "cards", resultKey: "cardsCorrect" },
+  ];
+  statMarkets.forEach(({ pickKey, lineKey, statKey, resultKey }) => {
+    const stat = actualStats?.[statKey];
+    if (!logged[pickKey] || !stat || stat.home == null || stat.away == null) return;
+    const actualTotal = stat.home + stat.away;
+    const actualSide = actualTotal > logged[lineKey] ? "over" : "under";
+    result[resultKey] = logged[pickKey] === actualSide;
+  });
+
   return result;
 }
 
@@ -47,17 +84,29 @@ function checkPredictionOutcome(logged, actualHomeGoals, actualAwayGoals) {
 // percentages per market. Entries where a market wasn't tracked are
 // excluded from that market's denominator, not counted as wrong.
 function aggregateAccuracy(entries) {
-  const withResult = entries.filter((e) => e.resultCorrect !== undefined);
-  const withGoalsOU = entries.filter((e) => e.goalsOverUnderCorrect !== undefined);
-
   const pct = (arr, key) => (arr.length ? Math.round((arr.filter((e) => e[key]).length / arr.length) * 1000) / 10 : null);
 
-  return {
-    resultAccuracyPct: pct(withResult, "resultCorrect"),
-    resultSampleSize: withResult.length,
-    goalsOverUnderAccuracyPct: pct(withGoalsOU, "goalsOverUnderCorrect"),
-    goalsOverUnderSampleSize: withGoalsOU.length,
-  };
+  // Every market tracked, with the log field it's stored under and the
+  // label used in the API response. Adding a new market here is all it
+  // takes for it to show up everywhere accuracy is displayed.
+  const markets = [
+    { key: "resultCorrect", name: "result" },
+    { key: "goalsOverUnderCorrect", name: "goalsOverUnder" },
+    { key: "bttsCorrect", name: "btts" },
+    { key: "homeCleanSheetCorrect", name: "homeCleanSheet" },
+    { key: "awayCleanSheetCorrect", name: "awayCleanSheet" },
+    { key: "cornersCorrect", name: "corners" },
+    { key: "throwInsCorrect", name: "throwIns" },
+    { key: "cardsCorrect", name: "cards" },
+  ];
+
+  const out = {};
+  markets.forEach(({ key, name }) => {
+    const tracked = entries.filter((e) => e[key] !== undefined);
+    out[`${name}AccuracyPct`] = pct(tracked, key);
+    out[`${name}SampleSize`] = tracked.length;
+  });
+  return out;
 }
 
 // Same accuracy math as aggregateAccuracy, but broken out per league — a

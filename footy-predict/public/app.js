@@ -273,6 +273,9 @@ function explainHtml(e) {
 }
 
 function leagueSectionHtml(league) {
+  if (league.loading) {
+    return `<div class="league-section"><div class="league-title">${league.league}</div>${skeletonHtml(3)}</div>`;
+  }
   if (league.error) {
     return `<div class="league-section"><div class="league-title">${league.league}</div><div class="league-error">Couldn't load this league right now: ${league.error}</div></div>`;
   }
@@ -340,27 +343,23 @@ async function renderPredictions() {
       api("/api/accuracy").catch(() => null),
     ]);
 
-    if (data.loading) {
-      document.getElementById("predictionsArea").innerHTML = `
-        <div class="loading-first-time">
-          <div class="loading-first-time-title">Loading your leagues for the first time…</div>
-          <div class="loading-first-time-sub">This can take a few minutes on a fresh deploy — checking again automatically.</div>
-        </div>
-      `;
-      setTimeout(() => renderPredictions(), 15000); // check again shortly, no need to keep hitting refresh manually
-      return;
-    }
-
     const leagues = Array.isArray(data) ? data : (data.leagues || []);
     const generatedAt = Array.isArray(data) ? null : data.generatedAt;
     const topPicks = Array.isArray(data) ? [] : (data.topPicks || (data.pickOfTheDay ? [data.pickOfTheDay] : []));
     currentLeaguesData = leagues;
 
-    const stamp = generatedAt ? `<div class="generated-at">Updated ${formatGeneratedAt(generatedAt)}</div>` : "";
+    const anyLoading = leagues.some((l) => l.loading);
+    const stamp = generatedAt
+      ? `<div class="generated-at">Updated ${formatGeneratedAt(generatedAt)}</div>`
+      : anyLoading ? `<div class="generated-at">Some leagues are still loading for the first time — this can take a while, checking again automatically…</div>` : "";
     const pickHtml = topPicksHtml(topPicks);
     const accuracyHtml = accuracy && accuracy.totalResolved > 0 ? accuracyBannerHtml(accuracy) : "";
 
     document.getElementById("predictionsArea").innerHTML = stamp + accuracyHtml + pickHtml + renderLeagueSections();
+
+    // Only keep polling while something's genuinely still loading — once
+    // every league has either real data or an error, this stops on its own.
+    if (anyLoading) setTimeout(() => renderPredictions(), 15000);
   } catch (e) {
     if (e.message.includes("logged in") || e.message.includes("expired")) { setToken(null); renderLogin(); return; }
     document.getElementById("predictionsArea").innerHTML = `<div class="league-error">${e.message}</div>`;

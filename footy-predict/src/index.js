@@ -476,13 +476,18 @@ const PREDICTIONS_REFRESH_INTERVAL_MS = 20 * 60 * 1000; // 20 minutes
 setInterval(() => refreshPredictionsCache(), PREDICTIONS_REFRESH_INTERVAL_MS);
 refreshPredictionsCache(); // kick off the first one immediately on boot, don't wait for the first visitor
 
-app.get("/api/predictions", requireAuth, async (req, res) => {
+app.get("/api/predictions", requireAuth, (req, res) => {
+  // Never make the HTTP request itself wait on the full computation — a
+  // fresh deploy's first computation can take several minutes, and no
+  // proxy will hold a connection open that long (this is exactly what
+  // caused a 502 before this fix). If nothing's cached yet, kick off a
+  // refresh in the background and respond immediately with `loading:
+  // true` — the frontend can poll again shortly after.
   if (!cachedPredictionsResult) {
-    // Nothing cached yet (server just booted) — this request has to wait
-    // on the real thing. Everyone after this gets it instantly.
-    await refreshPredictionsCache();
+    refreshPredictionsCache().catch(() => {}); // fire and forget; refreshInProgress prevents duplicates
+    return res.json({ generatedAt: null, leagues: [], pickOfTheDay: null, topPicks: [], loading: true });
   }
-  const { leagues, pickOfTheDay, topPicks } = cachedPredictionsResult || { leagues: [], pickOfTheDay: null, topPicks: [] };
+  const { leagues, pickOfTheDay, topPicks } = cachedPredictionsResult;
   res.json({ generatedAt: cachedPredictionsGeneratedAt, leagues, pickOfTheDay, topPicks });
 });
 

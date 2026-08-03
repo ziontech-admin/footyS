@@ -162,11 +162,20 @@ leagues or matches the free API doesn't cover:
 - **Quick prediction** — type in two teams' own scoring averages directly,
   get an instant prediction. Nothing saved, nothing uploaded.
 - **CSV upload** — upload a file of past results (`home_team, away_team,
-  home_goals, away_goals` columns) for any league/competition, and the app
-  computes the same stats the API leagues use, then lets you pick any two
-  uploaded teams to predict a matchup between them. This data isn't saved
-  on the server — it's held in your browser for that session only, so
+  home_goals, away_goals` columns required) for any league/competition, and
+  the app computes the same stats the API leagues use, then lets you pick
+  any two uploaded teams to predict a matchup between them. This data isn't
+  saved on the server — it's held in your browser for that session only, so
   refreshing the page or uploading again starts fresh on purpose.
+
+  **Optional columns**, if you have the data (from a scoreboard, a match
+  report, anywhere you can manually copy stats from) — add any of these in
+  pairs, home and away together: `home_corners, away_corners`,
+  `home_fouls, away_fouls`, `home_shots, away_shots`,
+  `home_possession, away_possession`. Whatever you include gets predicted
+  the same way the API-fetched leagues predict it — same math, same
+  calibrated over/under lines. A stat you don't have data for just doesn't
+  show a prediction for it, nothing breaks.
 
 ## What you need before deploying
 

@@ -215,3 +215,88 @@ describe("checkPickOutcome", () => {
     assert.equal(checkPickOutcome({ market: "corners", side: "over", line: 9.5 }, 2, 1), null);
   });
 });
+
+describe("checkPredictionOutcome — the newer markets", () => {
+  test("BTTS 'yes' is correct when both teams actually scored", () => {
+    const r = checkPredictionOutcome({ bttsPick: "yes" }, 2, 1);
+    assert.equal(r.bttsCorrect, true);
+  });
+
+  test("BTTS 'yes' is incorrect when one team was shut out", () => {
+    const r = checkPredictionOutcome({ bttsPick: "yes" }, 3, 0);
+    assert.equal(r.bttsCorrect, false);
+  });
+
+  test("BTTS 'no' is correct on a clean sheet either way", () => {
+    assert.equal(checkPredictionOutcome({ bttsPick: "no" }, 3, 0).bttsCorrect, true);
+    assert.equal(checkPredictionOutcome({ bttsPick: "no" }, 0, 2).bttsCorrect, true);
+  });
+
+  test("home clean sheet is correct when the away side scored zero", () => {
+    assert.equal(checkPredictionOutcome({ homeCleanSheetPick: "yes" }, 2, 0).homeCleanSheetCorrect, true);
+    assert.equal(checkPredictionOutcome({ homeCleanSheetPick: "yes" }, 2, 1).homeCleanSheetCorrect, false);
+  });
+
+  test("away clean sheet is correct when the home side scored zero", () => {
+    assert.equal(checkPredictionOutcome({ awayCleanSheetPick: "yes" }, 0, 1).awayCleanSheetCorrect, true);
+    assert.equal(checkPredictionOutcome({ awayCleanSheetPick: "yes" }, 1, 1).awayCleanSheetCorrect, false);
+  });
+
+  test("corners over is correct when the real combined total beat the line", () => {
+    const r = checkPredictionOutcome(
+      { cornersPick: "over", cornersLine: 9.5 }, 1, 1,
+      { corners: { home: 6, away: 5 } } // 11 total, above 9.5
+    );
+    assert.equal(r.cornersCorrect, true);
+  });
+
+  test("corners under is correct when the real total came in below the line", () => {
+    const r = checkPredictionOutcome(
+      { cornersPick: "under", cornersLine: 9.5 }, 1, 1,
+      { corners: { home: 3, away: 4 } } // 7 total, below 9.5
+    );
+    assert.equal(r.cornersCorrect, true);
+  });
+
+  test("throw-ins and cards are checked the same way as corners", () => {
+    const r = checkPredictionOutcome(
+      { throwInsPick: "over", throwInsLine: 25.5, cardsPick: "under", cardsLine: 3.5 }, 1, 1,
+      { throwIns: { home: 15, away: 14 }, cards: { home: 1, away: 1 } }
+    );
+    assert.equal(r.throwInsCorrect, true); // 29 > 25.5
+    assert.equal(r.cardsCorrect, true);    // 2 < 3.5
+  });
+
+  test("a stat market is left unchecked (not guessed) when the real stats aren't available", () => {
+    const r = checkPredictionOutcome({ cornersPick: "over", cornersLine: 9.5 }, 1, 1, undefined);
+    assert.equal(r.cornersCorrect, undefined);
+  });
+
+  test("goal-derived markets still work fine even with no stats passed at all", () => {
+    const r = checkPredictionOutcome({ resultPick: "home", bttsPick: "yes" }, 2, 1);
+    assert.equal(r.resultCorrect, true);
+    assert.equal(r.bttsCorrect, true);
+  });
+});
+
+describe("aggregateAccuracy — the newer markets", () => {
+  test("reports accuracy and sample size for every new market independently", () => {
+    const entries = [
+      { bttsCorrect: true, cornersCorrect: true, cardsCorrect: false },
+      { bttsCorrect: false, cornersCorrect: true },
+    ];
+    const acc = aggregateAccuracy(entries);
+    assert.equal(acc.bttsAccuracyPct, 50);
+    assert.equal(acc.bttsSampleSize, 2);
+    assert.equal(acc.cornersAccuracyPct, 100);
+    assert.equal(acc.cornersSampleSize, 2);
+    assert.equal(acc.cardsAccuracyPct, 0);
+    assert.equal(acc.cardsSampleSize, 1); // only one entry tracked cards
+  });
+
+  test("markets with no data at all report null, not a misleading zero", () => {
+    const acc = aggregateAccuracy([{ resultCorrect: true }]);
+    assert.equal(acc.throwInsAccuracyPct, null);
+    assert.equal(acc.throwInsSampleSize, 0);
+  });
+});

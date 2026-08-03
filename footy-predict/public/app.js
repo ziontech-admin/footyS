@@ -796,3 +796,12 @@ async function renderManualTools() {
 
 if (getToken()) renderPredictions();
 else renderLogin();
+
+// Registers the service worker so the browser offers "Add to Home Screen" /
+// install — failing silently on browsers that don't support it (older
+// Safari, etc.) rather than breaking anything.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+  });
+}

@@ -235,6 +235,21 @@ finished matches so far — recency weighting (the same system used for
 everything else) naturally shifts weight onto the new season's own matches
 as they start coming in, so this fades out on its own as the season progresses.
 
+## Install to your home screen
+
+Footy Predict is now a proper installable web app — on iOS Safari, tap the
+Share button → "Add to Home Screen"; on Android Chrome, you'll get an
+"Install" prompt automatically. It opens fullscreen with no browser
+address bar, its own home screen icon, and loads instantly on repeat
+visits — genuinely feels like a native app, not a bookmark.
+
+Worth knowing: this only caches the *static* app (the login screen, the
+layout, the styling) for fast loading — it deliberately does **not**
+cache predictions or live scores. Serving a cached "live" score from an
+hour ago as if it were current would be actively misleading, not just a
+minor inconvenience, so every prediction and live match always comes
+fresh from the network, online-only, exactly as before.
+
 ## Live matches
 
 A separate **Live** tab shows every match currently in play across your 5

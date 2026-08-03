@@ -159,6 +159,15 @@ see below.
 
 **Manual tools** (a "Manual" tab in the app) let you get predictions for
 leagues or matches the free API doesn't cover:
+- **Half-time analyzer** — watching a match live? Paste the stats
+  comparison block straight from a live-score site's match page (just
+  select and copy — this is you reading a public webpage yourself, not
+  automated scraping) and get a projected full-match outcome. Works by
+  doubling the half-time xG and running it through the exact same
+  Poisson math as everything else in this app — same model, different
+  input. Needs an "Expected goals (xG)" line specifically; other stats in
+  the paste (possession, shots, corners) are shown as context but don't
+  feed the math.
 - **Quick prediction** — type in two teams' own scoring averages directly,
   get an instant prediction. Nothing saved, nothing uploaded.
 - **CSV upload** — upload a file of past results (`home_team, away_team,

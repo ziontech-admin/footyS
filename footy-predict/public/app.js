@@ -451,6 +451,52 @@ function accuracyBannerHtml(accuracy) {
 // Renders a prediction result (from /api/predict-manual) into the given
 // container element — shared by both the quick-entry form and the CSV
 // team-picker, since they end up calling the same endpoint.
+// Context stat labels, in the order they're shown — only ones actually
+// found in the pasted text get rendered, so this reads fine whether the
+// user pasted the full stats block or just a partial one.
+const HALFTIME_CONTEXT_LABELS = {
+  possession: "Possession", totalShots: "Total shots", shotsOnTarget: "Shots on target",
+  corners: "Corners", bigChances: "Big chances", fouls: "Fouls",
+};
+
+function halftimeResultHtml(parsed, projection) {
+  const p = projection.prediction, g = projection.goalsOverUnder;
+  const contextRows = Object.entries(HALFTIME_CONTEXT_LABELS)
+    .filter(([key]) => parsed[key])
+    .map(([key, label]) => `<div class="explain-row"><span>${label}</span><strong>${parsed[key].home} – ${parsed[key].away}</strong></div>`)
+    .join("");
+
+  return `
+    <div class="match-card" style="margin-top:16px">
+      <div class="likely-score" style="margin-bottom:10px">
+        Half-time xG ${projection.homeHalfTimeXG} – ${projection.awayHalfTimeXG} → projected full-match xG
+        <strong>${projection.homeProjectedXG}</strong> – <strong>${projection.awayProjectedXG}</strong>
+      </div>
+      <div class="prediction-bar">
+        <div class="home" style="width:${p.homeWinPct}%"></div>
+        <div class="draw" style="width:${p.drawPct}%"></div>
+        <div class="away" style="width:${p.awayWinPct}%"></div>
+      </div>
+      <div class="prediction-labels">
+        <span><strong>${p.homeWinPct}%</strong> Home</span>
+        <span><strong>${p.drawPct}%</strong> Draw</span>
+        <span><strong>${p.awayWinPct}%</strong> Away</span>
+      </div>
+      <div class="likely-score">Most likely final score: ${p.likelyScore}</div>
+      <div class="corners-row">
+        <span>⚽ Goals: ~${g.totalExpectedGoals} expected (full match)</span>
+        <span>O/U ${g.overUnderLine}: <strong>${g.overPct}%</strong> over · <strong>${g.underPct}%</strong> under</span>
+      </div>
+      ${contextRows ? `
+        <details class="explain">
+          <summary>Other stats from the paste</summary>
+          <div style="margin-top:10px">${contextRows}</div>
+        </details>
+      ` : ""}
+    </div>
+  `;
+}
+
 function renderManualResult(container, data) {
   const p = data.prediction, g = data.goalsOverUnder;
   const extraRows = [
@@ -695,6 +741,19 @@ async function renderManualTools() {
       </div>
 
       <div class="section-card">
+        <h3>Half-time analyzer</h3>
+        <div class="sub">
+          Watching a match live? Paste the stats block straight from a live-score site's
+          match page (select the whole stats comparison section, copy, paste below) — this
+          needs an "Expected goals (xG)" line specifically, everything else is optional context.
+        </div>
+        <textarea id="halftimeInput" rows="8" placeholder="Paste the stats block here…" style="width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:13px; font-family:inherit; resize:vertical;"></textarea>
+        <button id="analyzeHalftimeBtn" style="margin-top:10px">Analyze</button>
+        <div id="halftimeError" class="error"></div>
+        <div id="halftimeResult"></div>
+      </div>
+
+      <div class="section-card">
         <h3>Upload past results (CSV)</h3>
         <div class="sub">
           Required: <code>home_team, away_team, home_goals, away_goals</code>.
@@ -752,6 +811,20 @@ async function renderManualTools() {
         }),
       });
       renderManualResult(resultEl, data);
+    } catch (e) {
+      errorEl.textContent = e.message;
+    }
+  });
+
+  document.getElementById("analyzeHalftimeBtn").addEventListener("click", async () => {
+    const errorEl = document.getElementById("halftimeError");
+    const resultEl = document.getElementById("halftimeResult");
+    errorEl.textContent = ""; resultEl.innerHTML = "";
+    const pastedText = document.getElementById("halftimeInput").value;
+
+    try {
+      const { parsed, projection } = await api("/api/analyze-halftime", { method: "POST", body: JSON.stringify({ pastedText }) });
+      resultEl.innerHTML = halftimeResultHtml(parsed, projection);
     } catch (e) {
       errorEl.textContent = e.message;
     }

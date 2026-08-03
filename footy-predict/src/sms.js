@@ -12,6 +12,8 @@ async function sendSms(to, message) {
     console.warn(`[sms] ${warning}`);
     return { ok: false, error: warning };
   }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000); // 15s hard cap — never let this hang a request
   try {
     // ---- BLESSEDTEXTS CONFIG (confirmed against their API docs) ----
     const body = { api_key: BLESSEDTEXTS_API_KEY, sender_id: BLESSEDTEXTS_SENDER_ID, phone: to, message };
@@ -20,6 +22,7 @@ async function sendSms(to, message) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
     const data = await res.json().catch(() => null);
     if (!res.ok) {
@@ -28,8 +31,14 @@ async function sendSms(to, message) {
     }
     return { ok: true, status: res.status, response: data };
   } catch (err) {
+    if (err.name === "AbortError") {
+      console.error("[sms] BlessedTexts request timed out after 15s");
+      return { ok: false, error: "BlessedTexts request timed out after 15s" };
+    }
     console.error("[sms] BlessedTexts request error:", err.message);
     return { ok: false, error: err.message };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

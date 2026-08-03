@@ -308,6 +308,7 @@ async function renderPredictions() {
       <h1>⚽ Footy Predict</h1>
       <div class="tabs">
         <button class="tab-btn active" id="tabLeagues">Leagues</button>
+        <button class="tab-btn" id="tabLive">Live</button>
         <button class="tab-btn" id="tabManual">Manual</button>
         <button class="tab-btn" id="tabAccounts" style="display:none">Accounts</button>
         <button class="secondary" id="refreshBtn" title="Reload predictions">Refresh</button>
@@ -324,6 +325,7 @@ async function renderPredictions() {
   document.getElementById("refreshBtn").addEventListener("click", () => renderPredictions());
   document.getElementById("tabManual").addEventListener("click", renderManualTools);
   document.getElementById("tabLeagues").addEventListener("click", renderPredictions);
+  document.getElementById("tabLive").addEventListener("click", renderLive);
   document.getElementById("teamSearch").addEventListener("input", (e) => {
     document.getElementById("predictionsArea").innerHTML = renderLeagueSections(e.target.value);
   });
@@ -474,12 +476,86 @@ function renderManualResult(container, data) {
 
 let uploadedLeagueData = null; // cached in memory for this session only — see /api/upload-csv
 
+// Live matches — sorted by kickoff time (earliest first, since those are
+// typically furthest into the match). Auto-refreshes every 30 seconds
+// while this tab is open; the server's own cache only actually changes
+// once a minute, so this just picks up whatever's freshest without
+// hammering anything.
+async function renderLive() {
+  app.innerHTML = `
+    <div class="top-bar">
+      <h1>⚽ Footy Predict</h1>
+      <div class="tabs">
+        <button class="tab-btn" id="tabLeagues">Leagues</button>
+        <button class="tab-btn active" id="tabLive">Live</button>
+        <button class="tab-btn" id="tabManual">Manual</button>
+        <button class="tab-btn" id="tabAccounts" style="display:none">Accounts</button>
+        <button class="secondary" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+    <div class="content" id="liveArea">${skeletonHtml(2)}</div>
+  `;
+  document.getElementById("logoutBtn").addEventListener("click", () => { setToken(null); renderLogin(); });
+  document.getElementById("tabLeagues").addEventListener("click", renderPredictions);
+  document.getElementById("tabLive").addEventListener("click", renderLive);
+  document.getElementById("tabManual").addEventListener("click", renderManualTools);
+  api("/api/me").then(({ isOwner }) => {
+    if (!isOwner) return;
+    const btn = document.getElementById("tabAccounts");
+    btn.style.display = "";
+    btn.addEventListener("click", renderAccounts);
+  }).catch(() => {});
+
+  try {
+    const { matches, error } = await api("/api/live");
+    const area = document.getElementById("liveArea");
+    if (error) {
+      area.innerHTML = `<div class="league-error">Couldn't load live matches right now: ${error}</div>`;
+    } else if (matches.length === 0) {
+      area.innerHTML = `<div class="empty">No matches live right now across your 5 leagues.</div>`;
+    } else {
+      area.innerHTML = matches.map(liveMatchHtml).join("");
+    }
+  } catch (e) {
+    if (e.message.includes("logged in") || e.message.includes("expired")) { setToken(null); renderLogin(); return; }
+    document.getElementById("liveArea").innerHTML = `<div class="league-error">${e.message}</div>`;
+  }
+
+  // Only keep auto-refreshing while the Live tab is still the one showing
+  // — if the person's navigated elsewhere, this quietly stops on its own.
+  setTimeout(() => { if (document.getElementById("tabLive")?.classList.contains("active")) renderLive(); }, 30000);
+}
+
+function liveMatchHtml(m) {
+  const statusLabel = m.status === "PAUSED" ? "HT" : `${m.minute ?? "?"}'`;
+  return `
+    <div class="match-card">
+      <div class="match-teams">
+        <div class="team home">
+          ${m.homeCrest ? `<img src="${m.homeCrest}" alt="" />` : ""}
+          <span>${m.homeTeam}</span>
+        </div>
+        <div class="live-score">
+          <span class="live-badge">${statusLabel}</span>
+          <span class="live-score-value">${m.homeScore} – ${m.awayScore}</span>
+        </div>
+        <div class="team away">
+          <span>${m.awayTeam}</span>
+          ${m.awayCrest ? `<img src="${m.awayCrest}" alt="" />` : ""}
+        </div>
+      </div>
+      <div class="match-date">${m.league}</div>
+    </div>
+  `;
+}
+
 async function renderAccounts() {
   app.innerHTML = `
     <div class="top-bar">
       <h1>⚽ Footy Predict</h1>
       <div class="tabs">
         <button class="tab-btn" id="tabLeagues">Leagues</button>
+        <button class="tab-btn" id="tabLive">Live</button>
         <button class="tab-btn" id="tabManual">Manual</button>
         <button class="tab-btn active" id="tabAccounts">Accounts</button>
         <button class="secondary" id="logoutBtn">Log out</button>
@@ -507,6 +583,7 @@ async function renderAccounts() {
   document.getElementById("logoutBtn").addEventListener("click", () => { setToken(null); renderLogin(); });
   document.getElementById("tabManual").addEventListener("click", renderManualTools);
   document.getElementById("tabLeagues").addEventListener("click", renderPredictions);
+  document.getElementById("tabLive").addEventListener("click", renderLive);
   document.getElementById("tabAccounts").addEventListener("click", renderAccounts);
 
   document.getElementById("addAccountBtn").addEventListener("click", async () => {
@@ -572,6 +649,7 @@ async function renderManualTools() {
       <h1>⚽ Footy Predict</h1>
       <div class="tabs">
         <button class="tab-btn" id="tabLeagues">Leagues</button>
+        <button class="tab-btn" id="tabLive">Live</button>
         <button class="tab-btn active" id="tabManual">Manual</button>
         <button class="tab-btn" id="tabAccounts" style="display:none">Accounts</button>
         <button class="secondary" id="logoutBtn">Log out</button>
@@ -636,6 +714,7 @@ async function renderManualTools() {
   document.getElementById("logoutBtn").addEventListener("click", () => { setToken(null); renderLogin(); });
   document.getElementById("tabManual").addEventListener("click", renderManualTools);
   document.getElementById("tabLeagues").addEventListener("click", renderPredictions);
+  document.getElementById("tabLive").addEventListener("click", renderLive);
   api("/api/me").then(({ isOwner }) => {
     if (!isOwner) return;
     const btn = document.getElementById("tabAccounts");

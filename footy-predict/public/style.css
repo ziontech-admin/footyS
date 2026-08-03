@@ -482,6 +482,35 @@ button.secondary:hover { background: #262b37; border-color: var(--border-hover);
 }
 .corners-row strong { color: var(--text); font-family: "JetBrains Mono", monospace; }
 
+.live-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 0 12px;
+}
+.live-badge {
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--red);
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.3px;
+  animation: livePulse 2s ease-in-out infinite;
+}
+@keyframes livePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.live-score-value {
+  font-size: 20px;
+  font-weight: 800;
+  font-family: "JetBrains Mono", monospace;
+  color: var(--text);
+}
+
 .explain {
   margin-top: 12px;
   padding-top: 12px;
@@ -567,6 +596,17 @@ button.secondary:hover { background: #262b37; border-color: var(--border-hover);
 }
 .loading-first-time-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
 .loading-first-time-sub { font-size: 13px; color: var(--text-dim); }
+.loading-first-time-error {
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--red);
+  background: var(--red-dim);
+  border: 1px solid rgba(240,84,107,0.25);
+  border-radius: 8px;
+  padding: 10px 14px;
+  display: inline-block;
+  font-family: "JetBrains Mono", monospace;
+}
 
 .skeleton-card {
   background: var(--card);

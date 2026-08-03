@@ -235,6 +235,15 @@ finished matches so far — recency weighting (the same system used for
 everything else) naturally shifts weight onto the new season's own matches
 as they start coming in, so this fades out on its own as the season progresses.
 
+## Live matches
+
+A separate **Live** tab shows every match currently in play across your 5
+leagues, sorted by kickoff time. This runs on its own fast refresh cycle —
+every 1 minute server-side, every 30 seconds while you have the tab open —
+completely separate from the 20-minute league cache, since a score that's
+20 minutes stale isn't "live" at all. One API call covers all 5 leagues at
+once (football-data.org's `LIVE` status filter works across competitions).
+
 ## Loading speed
 
 Each league is refreshed and cached **independently**, every 20 minutes,

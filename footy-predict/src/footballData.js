@@ -41,18 +41,32 @@ function throttled(fn) {
   return result;
 }
 
-async function rawFetch(path) {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { "X-Auth-Token": process.env.FOOTBALL_DATA_API_KEY },
-  });
+async function rawFetch(path, attempt = 1) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000); // 30s hard cap — a hung request can never block the queue forever
+  let res;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      headers: { "X-Auth-Token": process.env.FOOTBALL_DATA_API_KEY },
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error(`football-data.org request timed out after 30s: ${path}`);
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
   if (res.status === 429) {
     // Belt-and-braces: the throttle above should prevent this, but if it
-    // still happens (e.g. another process sharing the same account), wait
-    // the time the API tells us to and retry once rather than failing outright.
+    // still happens, wait the time the API tells us to and retry — capped
+    // at 5 attempts with a hard ceiling on the wait itself, so a
+    // persistent 429 can NEVER hang this request (and therefore the whole
+    // queue behind it) forever, which is exactly what happened before this fix.
+    if (attempt >= 5) throw new Error(`football-data.org kept returning 429 after ${attempt} attempts — giving up on this request.`);
     const body = await res.json().catch(() => ({}));
-    const waitSeconds = Number(String(body.message || "").match(/(\d+)\s*second/)?.[1]) || 15;
+    const waitSeconds = Math.min(Number(String(body.message || "").match(/(\d+)\s*second/)?.[1]) || 15, 60);
     await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
-    return rawFetch(path);
+    return rawFetch(path, attempt + 1);
   }
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -61,9 +75,9 @@ async function rawFetch(path) {
   return res.json();
 }
 
-async function cachedFetch(path) {
+async function cachedFetch(path, ttlMs = CACHE_TTL_MS) {
   const cached = cache.get(path);
-  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.data;
+  if (cached && Date.now() - cached.at < ttlMs) return cached.data;
 
   const data = await throttled(() => rawFetch(path));
   cache.set(path, { data, at: Date.now() });
@@ -73,6 +87,17 @@ async function cachedFetch(path) {
 async function upcomingMatches(competitionCode, limit = 10) {
   const data = await cachedFetch(`/competitions/${competitionCode}/matches?status=SCHEDULED`);
   return (data.matches || []).slice(0, limit);
+}
+
+const LIVE_CACHE_TTL_MS = 60 * 1000; // 1 minute — live scores change constantly, the 1-hour default would show stale scores
+
+// Every currently in-play (or half-time paused) match across our 5
+// leagues, in one call — LIVE is a documented pseudo-status covering both
+// IN_PLAY and PAUSED, and the cross-competition endpoint lets this cover
+// all 5 leagues without 5 separate requests.
+async function liveMatches(competitionCodes) {
+  const data = await cachedFetch(`/matches?status=LIVE&competitions=${competitionCodes.join(",")}`, LIVE_CACHE_TTL_MS);
+  return data.matches || [];
 }
 
 // `seasonStartYear`, if given, pulls a specific season (e.g. 2025 for the
@@ -398,7 +423,7 @@ function extractPossession(match) {
 }
 
 module.exports = {
-  upcomingMatches, finishedMatches, computeStats, standings, formWeight, shrinkToMean, FORM_HALF_LIFE_DAYS,
+  upcomingMatches, finishedMatches, liveMatches, computeStats, standings, formWeight, shrinkToMean, FORM_HALF_LIFE_DAYS,
   computeStatAverages, extractCorners, extractThrowIns, extractFouls, extractShots, extractOffsides,
   extractGoalKicks, extractSaves, extractCards, extractPossession,
   matchDetail, enrichWithStatistics, matchIdsNeedingEnrichment, previousSeasonStartYear,

@@ -6,7 +6,7 @@ const {
 } = require("./auth");
 const { sendSms } = require("./sms");
 const {
-  upcomingMatches, finishedMatches, computeStats, standings, computeStatAverages,
+  upcomingMatches, finishedMatches, liveMatches, computeStats, standings, computeStatAverages,
   extractCorners, extractThrowIns, extractFouls, extractShots, extractOffsides, extractGoalKicks, extractSaves, extractCards, extractPossession,
   enrichWithStatistics, previousSeasonStartYear,
 } = require("./footballData");
@@ -546,6 +546,40 @@ app.get("/api/accuracy", requireAuth, (req, res) => {
     byLeague: accuracyByLeague(resolved),
     byWeek: accuracyByWeek(resolved),
   });
+});
+
+// Live matches — a completely separate, much faster refresh cycle from the
+// 20-minute league cache above, since a score that's an hour stale isn't
+// "live" at all. One call covers all 5 leagues at once (see liveMatches).
+let liveCache = [];
+let liveCacheError = null;
+
+async function refreshLiveMatches() {
+  try {
+    const matches = await liveMatches(LEAGUES.map((l) => l.code));
+    const leagueNameByCode = Object.fromEntries(LEAGUES.map((l) => [l.code, l.name]));
+    liveCache = matches
+      .map((m) => ({
+        id: m.id, utcDate: m.utcDate, status: m.status, minute: m.minute ?? null,
+        league: leagueNameByCode[m.competition?.code] || m.competition?.name || "Unknown",
+        homeTeam: m.homeTeam?.name, awayTeam: m.awayTeam?.name,
+        homeCrest: m.homeTeam?.crest, awayCrest: m.awayTeam?.crest,
+        homeScore: m.score?.fullTime?.home ?? 0, awayScore: m.score?.fullTime?.away ?? 0,
+      }))
+      .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate)); // earliest kickoff first
+    liveCacheError = null;
+  } catch (err) {
+    console.error("Live matches refresh failed:", err.message);
+    liveCacheError = err.message;
+  }
+}
+
+const LIVE_REFRESH_INTERVAL_MS = 60 * 1000; // 1 minute — far more responsive than the 20-minute league cache
+setInterval(() => refreshLiveMatches(), LIVE_REFRESH_INTERVAL_MS);
+refreshLiveMatches();
+
+app.get("/api/live", requireAuth, (req, res) => {
+  res.json({ matches: liveCache, error: liveCacheError, generatedAt: new Date().toISOString() });
 });
 
 // Upload a CSV of past results for any league/competition not covered by

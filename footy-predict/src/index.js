@@ -602,10 +602,32 @@ app.post("/api/upload-csv", requireAuth, (req, res) => {
     const stats = computeStats(matches);
     const teams = teamNamesIn(matches);
     const teamStats = Object.fromEntries(teams.map((name) => [name, stats.teamStats(name)]));
+
+    // Whichever optional stat columns were in the CSV, compute averages for
+    // them the exact same way the API-fetched leagues do — same functions,
+    // same math. A stat nobody included in the CSV just comes back null,
+    // same graceful-degradation pattern as everywhere else.
+    const extraStats = {
+      corners: computeStatAverages(matches, extractCorners),
+      fouls: computeStatAverages(matches, extractFouls),
+      shots: computeStatAverages(matches, extractShots),
+      possession: computeStatAverages(matches, extractPossession),
+    };
+    const extraTeamStats = {};
+    teams.forEach((name) => {
+      extraTeamStats[name] = {};
+      Object.entries(extraStats).forEach(([key, statResult]) => {
+        if (statResult) extraTeamStats[name][key] = statResult.teamStats(name);
+      });
+    });
+
     res.json({
-      teams, teamStats,
+      teams, teamStats, extraTeamStats,
       leagueAvgHomeGoals: Math.round(stats.leagueAvgHomeGoals * 100) / 100,
       leagueAvgAwayGoals: Math.round(stats.leagueAvgAwayGoals * 100) / 100,
+      leagueAvgCorners: extraStats.corners ? { home: extraStats.corners.leagueAvgHome, away: extraStats.corners.leagueAvgAway } : null,
+      leagueAvgFouls: extraStats.fouls ? { home: extraStats.fouls.leagueAvgHome, away: extraStats.fouls.leagueAvgAway } : null,
+      leagueAvgShots: extraStats.shots ? { home: extraStats.shots.leagueAvgHome, away: extraStats.shots.leagueAvgAway } : null,
       matchCount: matches.length,
     });
   } catch (err) {
@@ -618,7 +640,7 @@ app.post("/api/upload-csv", requireAuth, (req, res) => {
 // once the user's picked two uploaded teams (the browser sends that team's
 // already-computed stats straight through).
 app.post("/api/predict-manual", requireAuth, (req, res) => {
-  const { homeAvgGoalsFor, homeAvgGoalsAgainst, awayAvgGoalsFor, awayAvgGoalsAgainst, leagueAvgHomeGoals, leagueAvgAwayGoals } = req.body || {};
+  const { homeAvgGoalsFor, homeAvgGoalsAgainst, awayAvgGoalsFor, awayAvgGoalsAgainst, leagueAvgHomeGoals, leagueAvgAwayGoals, extraStats } = req.body || {};
   const nums = { homeAvgGoalsFor, homeAvgGoalsAgainst, awayAvgGoalsFor, awayAvgGoalsAgainst, leagueAvgHomeGoals, leagueAvgAwayGoals };
   for (const [key, val] of Object.entries(nums)) {
     if (!Number.isFinite(Number(val)) || Number(val) < 0) return res.status(400).json({ error: `"${key}" must be a valid, non-negative number.` });
@@ -630,7 +652,24 @@ app.post("/api/predict-manual", requireAuth, (req, res) => {
     leagueAvgHomeGoals: Number(leagueAvgHomeGoals), leagueAvgAwayGoals: Number(leagueAvgAwayGoals),
   });
   const goalsOverUnder = predictGoalsOverUnder(prediction.homeExpectedGoals, prediction.awayExpectedGoals);
-  res.json({ prediction, goalsOverUnder });
+
+  // Optional: corners/fouls/shots, if the caller supplied both teams' own
+  // averages AND a league average for that stat — same best-effort pattern
+  // as everywhere else. Any stat missing its inputs is just left out of the
+  // response rather than erroring the whole prediction.
+  const predictors = { corners: predictCorners, fouls: predictFouls, shots: predictShots };
+  const extra = {};
+  if (extraStats && typeof extraStats === "object") {
+    Object.entries(predictors).forEach(([key, predictor]) => {
+      const s = extraStats[key];
+      if (!s) return;
+      const vals = [s.homeAvgFor, s.awayAvgFor, s.leagueAvgHome, s.leagueAvgAway].map(Number);
+      if (vals.some((v) => !Number.isFinite(v) || v < 0)) return;
+      extra[key] = predictor(vals[0], vals[1], calibratedLine(vals[2] + vals[3]));
+    });
+  }
+
+  res.json({ prediction, goalsOverUnder, ...extra });
 });
 
 // Weekly picks digest — every Friday evening (18:00 UTC = 9pm EAT), texts

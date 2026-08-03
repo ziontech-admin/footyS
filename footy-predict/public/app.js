@@ -453,6 +453,12 @@ function accuracyBannerHtml(accuracy) {
 // team-picker, since they end up calling the same endpoint.
 function renderManualResult(container, data) {
   const p = data.prediction, g = data.goalsOverUnder;
+  const extraRows = [
+    data.corners ? `<span>⛳ Corners: ~${data.corners.totalExpectedCorners} expected · O/U ${data.corners.overUnderLine}: <strong>${data.corners.overPct}%</strong> / <strong>${data.corners.underPct}%</strong></span>` : "",
+    data.fouls ? `<span>🟨 Fouls: ~${data.fouls.totalExpectedFouls} expected · O/U ${data.fouls.overUnderLine}: <strong>${data.fouls.overPct}%</strong> / <strong>${data.fouls.underPct}%</strong></span>` : "",
+    data.shots ? `<span>🎯 Shots: ~${data.shots.totalExpectedShots} expected · O/U ${data.shots.overUnderLine}: <strong>${data.shots.overPct}%</strong> / <strong>${data.shots.underPct}%</strong></span>` : "",
+  ].filter(Boolean);
+
   container.innerHTML = `
     <div class="match-card">
       <div class="prediction-bar">
@@ -470,6 +476,7 @@ function renderManualResult(container, data) {
         <span>⚽ Goals: ~${g.totalExpectedGoals} expected</span>
         <span>O/U ${g.overUnderLine}: <strong>${g.overPct}%</strong> over · <strong>${g.underPct}%</strong> under</span>
       </div>
+      ${extraRows.map((row) => `<div class="corners-row">${row}</div>`).join("")}
     </div>
   `;
 }
@@ -689,7 +696,13 @@ async function renderManualTools() {
 
       <div class="section-card">
         <h3>Upload past results (CSV)</h3>
-        <div class="sub">Columns required: <code>home_team, away_team, home_goals, away_goals</code> — a header row, any column order.</div>
+        <div class="sub">
+          Required: <code>home_team, away_team, home_goals, away_goals</code>.
+          Optional, add any you have (in pairs — both home and away columns for a stat, or neither):
+          <code>home_corners, away_corners</code> · <code>home_fouls, away_fouls</code> ·
+          <code>home_shots, away_shots</code> · <code>home_possession, away_possession</code>.
+          Header row required, any column order.
+        </div>
         <input type="file" id="csvFile" accept=".csv,text/csv" />
         <button id="uploadCsvBtn" style="margin-top:10px">Upload</button>
         <div id="csvError" class="error"></div>
@@ -779,12 +792,30 @@ async function renderManualTools() {
     try {
       const homeStats = uploadedLeagueData.teamStats[homeTeam];
       const awayStats = uploadedLeagueData.teamStats[awayTeam];
+      const homeExtra = uploadedLeagueData.extraTeamStats?.[homeTeam] || {};
+      const awayExtra = uploadedLeagueData.extraTeamStats?.[awayTeam] || {};
+
+      // Only include a stat in the request if BOTH teams have it (they
+      // came from the same upload, so this should usually be all-or-nothing,
+      // but staying defensive costs nothing).
+      const extraStats = {};
+      ["corners", "fouls", "shots"].forEach((key) => {
+        const leagueAvgKey = "leagueAvg" + key[0].toUpperCase() + key.slice(1);
+        if (homeExtra[key] && awayExtra[key] && uploadedLeagueData[leagueAvgKey]) {
+          extraStats[key] = {
+            homeAvgFor: homeExtra[key].homeAvgFor, awayAvgFor: awayExtra[key].awayAvgFor,
+            leagueAvgHome: uploadedLeagueData[leagueAvgKey].home, leagueAvgAway: uploadedLeagueData[leagueAvgKey].away,
+          };
+        }
+      });
+
       const data = await api("/api/predict-manual", {
         method: "POST",
         body: JSON.stringify({
           homeAvgGoalsFor: homeStats.homeAvgGoalsFor, homeAvgGoalsAgainst: homeStats.homeAvgGoalsAgainst,
           awayAvgGoalsFor: awayStats.awayAvgGoalsFor, awayAvgGoalsAgainst: awayStats.awayAvgGoalsAgainst,
           leagueAvgHomeGoals: uploadedLeagueData.leagueAvgHomeGoals, leagueAvgAwayGoals: uploadedLeagueData.leagueAvgAwayGoals,
+          extraStats,
         }),
       });
       renderManualResult(resultEl, data);

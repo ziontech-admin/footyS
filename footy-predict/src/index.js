@@ -12,8 +12,9 @@ const {
 } = require("./footballData");
 const {
   predict, predictCorners, predictThrowIns, predictFouls, predictShots, predictOffsides, predictGoalKicks, predictSaves, predictCards,
-  predictGoalsOverUnder, bestOutcome, calibratedLine,
+  predictGoalsOverUnder, bestOutcome, calibratedLine, projectFullMatchFromHalfTime,
 } = require("./predict");
+const { parseHalfTimeStats } = require("./statsPaste");
 const {
   recentForm, checkPredictionOutcome, aggregateAccuracy, accuracyByLeague, accuracyByWeek, startOfWeekUtc, checkPickOutcome,
 } = require("./stats");
@@ -670,6 +671,25 @@ app.post("/api/predict-manual", requireAuth, (req, res) => {
   }
 
   res.json({ prediction, goalsOverUnder, ...extra });
+});
+
+// Half-time analyzer — takes raw stats text pasted from a live-score site
+// mid-match (the repeating [home value, label, away value] pattern those
+// sites produce when you copy their stats comparison section) and projects
+// a full-match outcome from the half-time xG. Only xG actually drives the
+// math; the rest of what's recognized is returned alongside purely as
+// context, same as a human reading shots/possession/corners together.
+app.post("/api/analyze-halftime", requireAuth, (req, res) => {
+  const { pastedText } = req.body || {};
+  if (!pastedText || !String(pastedText).trim()) return res.status(400).json({ error: "Paste some stats first." });
+
+  const parsed = parseHalfTimeStats(pastedText);
+  if (!parsed.xG) {
+    return res.status(400).json({ error: 'Couldn\'t find an "Expected goals (xG)" line in that text — this only works with xG data specifically.' });
+  }
+
+  const projection = projectFullMatchFromHalfTime(parsed.xG.home, parsed.xG.away);
+  res.json({ parsed, projection });
 });
 
 // Weekly picks digest — every Friday evening (18:00 UTC = 9pm EAT), texts

@@ -1,8 +1,10 @@
 # Footy Predict
 
 Stats-based football outcome predictions (Premier League, La Liga, Serie A,
-Bundesliga, Ligue 1) for you and a small group of friends. Informational
-only — not betting advice, no real money involved anywhere in this app.
+Bundesliga, Ligue 1, Champions League, Eredivisie, Primeira Liga,
+Championship, and Brazilian Série A) for you and a small group of friends.
+Informational only — not betting advice, no real money involved anywhere
+in this app.
 
 ## Also included (from an earlier customized build)
 
@@ -171,7 +173,7 @@ leagues or matches the free API doesn't cover:
 1. **A free API key from football-data.org** (for match outcomes)
    - Go to https://www.football-data.org/client/register
    - Sign up (free), confirm your email, and copy your API token from your account page
-   - The free tier covers the 5 leagues this app uses
+   - The free tier covers all 10 leagues this app uses
 
 2. **A persistent storage volume** (now required — for accounts and accuracy tracking)
    - In Railway: your project → Settings → Volumes → add a volume, mount it
@@ -256,21 +258,26 @@ A separate **Live** tab shows every match currently in play across your 5
 leagues, sorted by kickoff time. This runs on its own fast refresh cycle —
 every 1 minute server-side, every 30 seconds while you have the tab open —
 completely separate from the 20-minute league cache, since a score that's
-20 minutes stale isn't "live" at all. One API call covers all 5 leagues at
-once (football-data.org's `LIVE` status filter works across competitions).
+20 minutes stale isn't "live" at all. One API call covers all 10 leagues
+at once (football-data.org's `LIVE` status filter works across competitions).
 
 ## Loading speed
 
 Each league is refreshed and cached **independently**, every 20 minutes,
 in the background. Whichever leagues are ready show real data immediately;
 any league still being computed shows its own loading placeholder while
-the others display normally — nobody has to wait for all 5 leagues
-together, which matters a lot in practice: with full stats enrichment
-enabled, a complete refresh across all 5 leagues can genuinely take
-**25-30+ minutes** combined (confirmed from real deploy logs, not a
-guess). Waiting for that before showing anything would be a bad
-experience; showing each league the moment it's actually ready is a much
-better one.
+the others display normally — nobody has to wait for all 10 leagues
+together, which matters even more now than it used to: going from 5
+leagues to 10 roughly **doubles** the total background computation time,
+since every league shares one throttled queue. With full stats enrichment
+enabled, a complete refresh across all 10 leagues could genuinely take
+**an hour or more** combined on the free tier's rate limit. Progressive
+per-league loading means you're not staring at a blank page for that
+whole hour — Premier League (or whichever league happens to finish first)
+shows up on its own timeline, same as before — but the newly-added
+leagues (Champions League, Eredivisie, Primeira Liga, Championship,
+Brazilian Série A) will generally take longer to first populate simply
+because there are more leagues ahead of them in the queue.
 
 The server also never makes your browser wait on any of this directly —
 every request gets an immediate response with whatever's currently cached
@@ -291,20 +298,21 @@ don't guess, since setting this too high risks real 429 errors):
 FOOTBALL_DATA_RATE_LIMIT=30
 ```
 
-(or whatever your confirmed real limit is — 60 for higher tiers). This
-directly cuts the real 25-30 minute figure above roughly proportionally —
-30/min instead of 10/min means a full refresh takes roughly a third as long.
+(or whatever your confirmed real limit is — 60 for higher tiers). With 10
+leagues now instead of 5, this matters more than it used to — it's the
+single biggest lever for keeping the newly-added leagues from taking
+excessively long to first populate.
 
 ### Rough numbers, for the background job itself (not user-facing)
 
-- **Goals only** (no Statistics Add-On): ~15 calls total across all 5
-  leagues
+- **Goals only** (no Statistics Add-On): ~15 calls per league, so ~150
+  calls total across all 10 leagues
 - **With corners/throw-ins/etc enabled**: each league also needs
   detail-fetches for its teams' recent matches (up to 5 per team,
   deduped) — this can add anywhere from dozens to a couple hundred extra
-  calls depending on how many teams have upcoming fixtures. At the free
-  tier's 10/min, a full refresh across all 5 leagues took **~19+ minutes**
-  in real testing; at 30/min it should be roughly a third of that.
+  calls per league. At the free tier's 10/min, a full refresh across the
+  original 5 leagues took **~19+ minutes** in real testing — with 10
+  leagues now sharing the same queue, expect that to roughly double.
 
 This only happens on a genuinely cold cache — once a league's data is
 fetched, it's cached for an hour, so this isn't something that happens on

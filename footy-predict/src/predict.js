@@ -218,8 +218,23 @@ function calibratedLine(leagueAverage) {
   return Math.round(leagueAverage - 0.5) + 0.5;
 }
 
+// Projects a full-match prediction from half-time xG alone — the simplest
+// sound approach: treat the same 45 minutes of chance creation as likely
+// to continue (absent a real tactical change), so double each team's
+// half-time xG to estimate a full 90 minutes, then run it through the
+// exact same Poisson math as every other prediction in this app. This is
+// deliberately NOT a different model — it's the same one, fed a different
+// kind of input (what's actually happened so far, not season history).
+function projectFullMatchFromHalfTime(homeHalfTimeXG, awayHalfTimeXG) {
+  const homeProjected = homeHalfTimeXG * 2;
+  const awayProjected = awayHalfTimeXG * 2;
+  const prediction = predictMatch(homeProjected, awayProjected);
+  const goalsOverUnder = predictGoalsOverUnder(homeProjected, awayProjected);
+  return { prediction, goalsOverUnder, homeHalfTimeXG, awayHalfTimeXG, homeProjectedXG: homeProjected, awayProjectedXG: awayProjected };
+}
+
 module.exports = {
   poissonProb, teamStrength, expectedGoals, predictMatch, predict, predictStatOverUnder,
   predictCorners, predictThrowIns, predictFouls, predictShots, predictOffsides, predictGoalKicks, predictSaves, predictCards,
-  predictGoalsOverUnder, bestOutcome, factorial, dixonColesTau, calibratedLine,
+  predictGoalsOverUnder, bestOutcome, factorial, dixonColesTau, calibratedLine, projectFullMatchFromHalfTime,
 };

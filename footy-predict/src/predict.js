@@ -252,9 +252,22 @@ function projectFullMatchFromShotsOnTarget(homeHalfTimeShotsOnTarget, awayHalfTi
   return { ...result, source: "shotsOnTarget", homeHalfTimeShotsOnTarget, awayHalfTimeShotsOnTarget };
 }
 
+// Projects corners/throw-ins forward from a half-time count the same way
+// goals get projected from half-time xG — double it, run it through the
+// same over/under math. Uses each predictor's own default line (there's no
+// league-specific average to calibrate against for a one-off live match,
+// unlike the main league predictions which use calibratedLine from real
+// season data) — a reasonable general-purpose line, just not a
+// per-league-tuned one.
+function projectStatFromHalfTime(homeHalfTimeCount, awayHalfTimeCount, predictor) {
+  const homeProjected = homeHalfTimeCount * 2;
+  const awayProjected = awayHalfTimeCount * 2;
+  return { ...predictor(homeProjected, awayProjected), homeHalfTimeCount, awayHalfTimeCount };
+}
+
 module.exports = {
   poissonProb, teamStrength, expectedGoals, predictMatch, predict, predictStatOverUnder,
   predictCorners, predictThrowIns, predictFouls, predictShots, predictOffsides, predictGoalKicks, predictSaves, predictCards,
   predictGoalsOverUnder, bestOutcome, factorial, dixonColesTau, calibratedLine,
-  projectFullMatchFromHalfTime, projectFullMatchFromShotsOnTarget, SHOTS_ON_TARGET_TO_XG_RATE,
+  projectFullMatchFromHalfTime, projectFullMatchFromShotsOnTarget, projectStatFromHalfTime, SHOTS_ON_TARGET_TO_XG_RATE,
 };

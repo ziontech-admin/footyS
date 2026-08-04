@@ -12,7 +12,7 @@ const {
 } = require("./footballData");
 const {
   predict, predictCorners, predictThrowIns, predictFouls, predictShots, predictOffsides, predictGoalKicks, predictSaves, predictCards,
-  predictGoalsOverUnder, bestOutcome, calibratedLine, projectFullMatchFromHalfTime,
+  predictGoalsOverUnder, bestOutcome, calibratedLine, projectFullMatchFromHalfTime, projectFullMatchFromShotsOnTarget,
 } = require("./predict");
 const { parseHalfTimeStats } = require("./statsPaste");
 const {
@@ -684,11 +684,23 @@ app.post("/api/analyze-halftime", requireAuth, (req, res) => {
   if (!pastedText || !String(pastedText).trim()) return res.status(400).json({ error: "Paste some stats first." });
 
   const parsed = parseHalfTimeStats(pastedText);
-  if (!parsed.xG) {
-    return res.status(400).json({ error: 'Couldn\'t find an "Expected goals (xG)" line in that text — this only works with xG data specifically.' });
+
+  let projection;
+  if (parsed.xG) {
+    projection = projectFullMatchFromHalfTime(parsed.xG.home, parsed.xG.away);
+  } else if (parsed.shotsOnTarget) {
+    // Not every live-score page includes xG — shots on target is a real,
+    // if cruder, fallback (see predict.js for the actual conversion rate
+    // and its sourcing). The response is clearly marked source:
+    // "shotsOnTarget" so the frontend can show this honestly as less
+    // precise than a real xG-based projection.
+    projection = projectFullMatchFromShotsOnTarget(parsed.shotsOnTarget.home, parsed.shotsOnTarget.away);
+  } else {
+    return res.status(400).json({
+      error: 'Couldn\'t find "Expected goals (xG)" or "Shots on target" in that text — this needs at least one of those to work from.',
+    });
   }
 
-  const projection = projectFullMatchFromHalfTime(parsed.xG.home, parsed.xG.away);
   res.json({ parsed, projection });
 });
 

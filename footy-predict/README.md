@@ -165,9 +165,10 @@ leagues or matches the free API doesn't cover:
   automated scraping) and get a projected full-match outcome. Works by
   doubling the half-time xG and running it through the exact same
   Poisson math as everything else in this app — same model, different
-  input. Needs an "Expected goals (xG)" line specifically; other stats in
-  the paste (possession, shots, corners) are shown as context but don't
-  feed the math.
+  input. Not every match tracks xG, so if it's missing, this falls back
+  to shots on target instead (a real, sourced ~30% team-level conversion
+  rate) — clearly labeled as less precise than real xG when that happens,
+  never silently treated as equivalent.
 - **Quick prediction** — type in two teams' own scoring averages directly,
   get an instant prediction. Nothing saved, nothing uploaded.
 - **CSV upload** — upload a file of past results (`home_team, away_team,

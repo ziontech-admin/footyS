@@ -15,6 +15,7 @@ const KNOWN_STATS = [
   { key: "totalShots", pattern: /^total shots/i },
   { key: "shotsOnTarget", pattern: /^shots on target/i },
   { key: "corners", pattern: /^corner kicks/i },
+  { key: "throwIns", pattern: /^throw.?ins?/i },
   { key: "bigChances", pattern: /^big chances/i },
   { key: "fouls", pattern: /^fouls/i },
 ];

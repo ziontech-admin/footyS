@@ -168,7 +168,9 @@ leagues or matches the free API doesn't cover:
   input. Not every match tracks xG, so if it's missing, this falls back
   to shots on target instead (a real, sourced ~30% team-level conversion
   rate) — clearly labeled as less precise than real xG when that happens,
-  never silently treated as equivalent.
+  never silently treated as equivalent. If the paste includes corners
+  and/or throw-ins, those get their own real over/under projections too
+  (same doubling approach), not just displayed as a raw half-time count.
 - **Quick prediction** — type in two teams' own scoring averages directly,
   get an instant prediction. Nothing saved, nothing uploaded.
 - **CSV upload** — upload a file of past results (`home_team, away_team,

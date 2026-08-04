@@ -466,10 +466,19 @@ function halftimeResultHtml(parsed, projection) {
     .map(([key, label]) => `<div class="explain-row"><span>${label}</span><strong>${parsed[key].home} – ${parsed[key].away}</strong></div>`)
     .join("");
 
+  const sourceNote = projection.source === "shotsOnTarget"
+    ? `<div class="loading-first-time-error" style="display:block; margin-bottom:12px;">
+        ⚠️ No xG in that paste — this projection is estimated from shots on target instead
+        (${projection.homeHalfTimeShotsOnTarget} – ${projection.awayHalfTimeShotsOnTarget}), using a league-average
+        conversion rate. Less precise than a real xG-based projection — treat this as a rougher read.
+      </div>`
+    : "";
+
   return `
-    <div class="match-card" style="margin-top:16px">
+    ${sourceNote}
+    <div class="match-card" style="margin-top:${sourceNote ? "0" : "16px"}">
       <div class="likely-score" style="margin-bottom:10px">
-        Half-time xG ${projection.homeHalfTimeXG} – ${projection.awayHalfTimeXG} → projected full-match xG
+        Half-time ${projection.source === "xG" ? "xG" : "estimated xG"} ${projection.homeHalfTimeXG} – ${projection.awayHalfTimeXG} → projected full-match xG
         <strong>${projection.homeProjectedXG}</strong> – <strong>${projection.awayProjectedXG}</strong>
       </div>
       <div class="prediction-bar">
@@ -744,8 +753,9 @@ async function renderManualTools() {
         <h3>Half-time analyzer</h3>
         <div class="sub">
           Watching a match live? Paste the stats block straight from a live-score site's
-          match page (select the whole stats comparison section, copy, paste below) — this
-          needs an "Expected goals (xG)" line specifically, everything else is optional context.
+          match page (select the whole stats comparison section, copy, paste below).
+          Uses "Expected goals (xG)" if it's there; falls back to "Shots on target"
+          (less precise, but still useful) if the page doesn't track xG for this match.
         </div>
         <textarea id="halftimeInput" rows="8" placeholder="Paste the stats block here…" style="width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:13px; font-family:inherit; resize:vertical;"></textarea>
         <button id="analyzeHalftimeBtn" style="margin-top:10px">Analyze</button>

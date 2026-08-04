@@ -453,13 +453,15 @@ function accuracyBannerHtml(accuracy) {
 // team-picker, since they end up calling the same endpoint.
 // Context stat labels, in the order they're shown — only ones actually
 // found in the pasted text get rendered, so this reads fine whether the
-// user pasted the full stats block or just a partial one.
+// user pasted the full stats block or just a partial one. Corners and
+// throw-ins aren't listed here — they get real over/under predictions
+// instead of just a raw count, see halftimeResultHtml.
 const HALFTIME_CONTEXT_LABELS = {
   possession: "Possession", totalShots: "Total shots", shotsOnTarget: "Shots on target",
-  corners: "Corners", bigChances: "Big chances", fouls: "Fouls",
+  bigChances: "Big chances", fouls: "Fouls",
 };
 
-function halftimeResultHtml(parsed, projection) {
+function halftimeResultHtml(parsed, projection, corners, throwIns) {
   const p = projection.prediction, g = projection.goalsOverUnder;
   const contextRows = Object.entries(HALFTIME_CONTEXT_LABELS)
     .filter(([key]) => parsed[key])
@@ -496,6 +498,18 @@ function halftimeResultHtml(parsed, projection) {
         <span>⚽ Goals: ~${g.totalExpectedGoals} expected (full match)</span>
         <span>O/U ${g.overUnderLine}: <strong>${g.overPct}%</strong> over · <strong>${g.underPct}%</strong> under</span>
       </div>
+      ${corners ? `
+        <div class="corners-row">
+          <span>⛳ Corners: ${corners.homeHalfTimeCount}–${corners.awayHalfTimeCount} at half-time → ~${corners.totalExpectedCorners} expected (full match)</span>
+          <span>O/U ${corners.overUnderLine}: <strong>${corners.overPct}%</strong> over · <strong>${corners.underPct}%</strong> under</span>
+        </div>
+      ` : ""}
+      ${throwIns ? `
+        <div class="corners-row">
+          <span>🤾 Throw-ins: ${throwIns.homeHalfTimeCount}–${throwIns.awayHalfTimeCount} at half-time → ~${throwIns.totalExpectedThrowIns} expected (full match)</span>
+          <span>O/U ${throwIns.overUnderLine}: <strong>${throwIns.overPct}%</strong> over · <strong>${throwIns.underPct}%</strong> under</span>
+        </div>
+      ` : ""}
       ${contextRows ? `
         <details class="explain">
           <summary>Other stats from the paste</summary>
@@ -833,8 +847,8 @@ async function renderManualTools() {
     const pastedText = document.getElementById("halftimeInput").value;
 
     try {
-      const { parsed, projection } = await api("/api/analyze-halftime", { method: "POST", body: JSON.stringify({ pastedText }) });
-      resultEl.innerHTML = halftimeResultHtml(parsed, projection);
+      const { parsed, projection, corners, throwIns } = await api("/api/analyze-halftime", { method: "POST", body: JSON.stringify({ pastedText }) });
+      resultEl.innerHTML = halftimeResultHtml(parsed, projection, corners, throwIns);
     } catch (e) {
       errorEl.textContent = e.message;
     }

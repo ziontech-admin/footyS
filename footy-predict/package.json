@@ -1,6 +1,6 @@
 {
   "name": "footy-predict",
-  "version": "1.18.0",
+  "version": "1.19.1",
   "description": "Stats-based football outcome predictions for a small group of friends",
   "main": "src/index.js",
   "scripts": {

@@ -12,7 +12,7 @@ const {
 } = require("./footballData");
 const {
   predict, predictCorners, predictThrowIns, predictFouls, predictShots, predictOffsides, predictGoalKicks, predictSaves, predictCards,
-  predictGoalsOverUnder, bestOutcome, calibratedLine, projectFullMatchFromHalfTime, projectFullMatchFromShotsOnTarget,
+  predictGoalsOverUnder, bestOutcome, calibratedLine, projectFullMatchFromHalfTime, projectFullMatchFromShotsOnTarget, projectStatFromHalfTime,
 } = require("./predict");
 const { parseHalfTimeStats } = require("./statsPaste");
 const {
@@ -701,7 +701,14 @@ app.post("/api/analyze-halftime", requireAuth, (req, res) => {
     });
   }
 
-  res.json({ parsed, projection });
+  // Corners and throw-ins, projected the same way as goals — best effort,
+  // only included if that stat was actually in the paste. Uses each
+  // predictor's default line since there's no league-specific average to
+  // calibrate against for a one-off live match.
+  const corners = parsed.corners ? projectStatFromHalfTime(parsed.corners.home, parsed.corners.away, predictCorners) : null;
+  const throwIns = parsed.throwIns ? projectStatFromHalfTime(parsed.throwIns.home, parsed.throwIns.away, predictThrowIns) : null;
+
+  res.json({ parsed, projection, corners, throwIns });
 });
 
 // Weekly picks digest — every Friday evening (18:00 UTC = 9pm EAT), texts

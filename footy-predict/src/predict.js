@@ -230,11 +230,31 @@ function projectFullMatchFromHalfTime(homeHalfTimeXG, awayHalfTimeXG) {
   const awayProjected = awayHalfTimeXG * 2;
   const prediction = predictMatch(homeProjected, awayProjected);
   const goalsOverUnder = predictGoalsOverUnder(homeProjected, awayProjected);
-  return { prediction, goalsOverUnder, homeHalfTimeXG, awayHalfTimeXG, homeProjectedXG: homeProjected, awayProjectedXG: awayProjected };
+  return {
+    prediction, goalsOverUnder, homeHalfTimeXG, awayHalfTimeXG, homeProjectedXG: homeProjected, awayProjectedXG: awayProjected,
+    source: "xG",
+  };
+}
+
+// Fallback for when the pasted data has no xG line at all (not every
+// live-score page tracks it) but does have shots on target. Team-level
+// shots-on-target conversion to goals sits around 30% across multiple
+// independent sources (real teams typically range roughly 21-39%) — this
+// uses that as a rough stand-in for xG. This is deliberately labeled as
+// less reliable: real xG accounts for shot location, defensive pressure,
+// and situation; this is just a count times a league-wide average rate.
+const SHOTS_ON_TARGET_TO_XG_RATE = 0.3;
+
+function projectFullMatchFromShotsOnTarget(homeHalfTimeShotsOnTarget, awayHalfTimeShotsOnTarget) {
+  const homeHalfTimeXG = Math.round(homeHalfTimeShotsOnTarget * SHOTS_ON_TARGET_TO_XG_RATE * 100) / 100;
+  const awayHalfTimeXG = Math.round(awayHalfTimeShotsOnTarget * SHOTS_ON_TARGET_TO_XG_RATE * 100) / 100;
+  const result = projectFullMatchFromHalfTime(homeHalfTimeXG, awayHalfTimeXG);
+  return { ...result, source: "shotsOnTarget", homeHalfTimeShotsOnTarget, awayHalfTimeShotsOnTarget };
 }
 
 module.exports = {
   poissonProb, teamStrength, expectedGoals, predictMatch, predict, predictStatOverUnder,
   predictCorners, predictThrowIns, predictFouls, predictShots, predictOffsides, predictGoalKicks, predictSaves, predictCards,
-  predictGoalsOverUnder, bestOutcome, factorial, dixonColesTau, calibratedLine, projectFullMatchFromHalfTime,
+  predictGoalsOverUnder, bestOutcome, factorial, dixonColesTau, calibratedLine,
+  projectFullMatchFromHalfTime, projectFullMatchFromShotsOnTarget, SHOTS_ON_TARGET_TO_XG_RATE,
 };

@@ -433,6 +433,14 @@ button.secondary:hover { background: #262b37; border-color: var(--border-hover);
   padding: 3px 8px;
   border-radius: 999px;
 }
+.match-league-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--blue);
+  background: var(--blue-dim);
+  padding: 3px 8px;
+  border-radius: 999px;
+}
 .conf-high { background: var(--green-dim); color: var(--green); }
 .conf-medium { background: var(--amber-dim); color: var(--amber); }
 .conf-low { background: var(--red-dim); color: var(--red); }
@@ -510,6 +518,25 @@ button.secondary:hover { background: #262b37; border-color: var(--border-hover);
   font-family: "JetBrains Mono", monospace;
   color: var(--text);
 }
+
+.result-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.result-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+.result-badge-muted { color: var(--text-faint); font-style: italic; }
 
 .explain {
   margin-top: 12px;

@@ -470,6 +470,50 @@ function assembleCurrentPicture() {
   return { leagues, pickOfTheDay, topPicks, allFinishedById, loading: anyLoading, generatedAt };
 }
 
+// The most recent finished matches per league, with whatever we predicted
+// for each one and whether it turned out right — reuses the exact same
+// leagueCache (finished matches were already being fetched, just never
+// exposed) and the prediction log (already tracking accuracy) that
+// everything else in this app already relies on. No new API calls.
+function assembleResultsPicture(limitPerLeague = 10) {
+  const log = getPredictionLog();
+  const logById = Object.fromEntries(log.map((e) => [e.matchId, e]));
+
+  const leagues = LEAGUES.map((league) => {
+    const cached = leagueCache[league.code];
+    if (!cached) return { league: league.name, code: league.code, matches: [], loading: true };
+
+    const recentFinished = [...cached.result.finished]
+      .sort((a, b) => new Date(b.utcDate) - new Date(a.utcDate))
+      .slice(0, limitPerLeague);
+
+    const matches = recentFinished.map((f) => {
+      const entry = logById[f.id];
+      return {
+        id: f.id, utcDate: f.utcDate,
+        homeTeam: f.homeTeam.name, awayTeam: f.awayTeam.name,
+        homeCrest: f.homeTeam.crest, awayCrest: f.awayTeam.crest,
+        homeScore: f.score?.fullTime?.home ?? null, awayScore: f.score?.fullTime?.away ?? null,
+        // null if we never actually predicted this match (e.g. it finished
+        // before this app was tracking it) — the frontend shows the score
+        // either way, just without a hit/miss row.
+        prediction: entry ? {
+          resultPick: entry.resultPick, resultCorrect: entry.resultCorrect,
+          goalsOverUnderPick: entry.goalsOverUnderPick, goalsOverUnderCorrect: entry.goalsOverUnderCorrect,
+          bttsPick: entry.bttsPick, bttsCorrect: entry.bttsCorrect,
+          cornersPick: entry.cornersPick, cornersCorrect: entry.cornersCorrect,
+          throwInsPick: entry.throwInsPick, throwInsCorrect: entry.throwInsCorrect,
+          cardsPick: entry.cardsPick, cardsCorrect: entry.cardsCorrect,
+        } : null,
+      };
+    });
+
+    return { league: league.name, code: league.code, matches, loading: false };
+  });
+
+  return { leagues, loading: leagues.some((l) => l.loading) };
+}
+
 // Tracks today's pick-of-the-day (if it's a new match) and checks any
 // previously-tracked picks against real results once they finish — sending
 // a check-in text either way it lands. Called after every predictions fetch
@@ -586,6 +630,10 @@ refreshLiveMatches();
 
 app.get("/api/live", requireAuth, (req, res) => {
   res.json({ matches: liveCache, error: liveCacheError, generatedAt: new Date().toISOString() });
+});
+
+app.get("/api/results", requireAuth, (req, res) => {
+  res.json(assembleResultsPicture());
 });
 
 // Upload a CSV of past results for any league/competition not covered by

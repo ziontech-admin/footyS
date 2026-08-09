@@ -608,6 +608,20 @@ async function refreshLiveMatches() {
   try {
     const matches = await liveMatches(LEAGUES.map((l) => l.code));
     const leagueNameByCode = Object.fromEntries(LEAGUES.map((l) => [l.code, l.name]));
+
+    // Build a lookup of every pre-match prediction we already have cached,
+    // across all leagues, keyed by match ID — best effort: a match that
+    // just kicked off may have already dropped out of the "scheduled" list
+    // by the time the league cache last refreshed (it only runs every 20
+    // minutes), so not every live match will have one. That's fine — the
+    // live score always shows regardless, the prediction is a bonus when available.
+    const predictionById = {};
+    LEAGUES.forEach((league) => {
+      const cached = leagueCache[league.code];
+      if (!cached) return;
+      cached.result.matches.forEach((m) => { predictionById[m.id] = { prediction: m.prediction, goalsOverUnder: m.goalsOverUnder }; });
+    });
+
     liveCache = matches
       .map((m) => ({
         id: m.id, utcDate: m.utcDate, status: m.status, minute: m.minute ?? null,
@@ -615,6 +629,8 @@ async function refreshLiveMatches() {
         homeTeam: m.homeTeam?.name, awayTeam: m.awayTeam?.name,
         homeCrest: m.homeTeam?.crest, awayCrest: m.awayTeam?.crest,
         homeScore: m.score?.fullTime?.home ?? 0, awayScore: m.score?.fullTime?.away ?? 0,
+        prediction: predictionById[m.id]?.prediction || null,
+        goalsOverUnder: predictionById[m.id]?.goalsOverUnder || null,
       }))
       .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate)); // earliest kickoff first
     liveCacheError = null;

@@ -176,6 +176,7 @@ function matchCardHtml(m) {
         ${formHtml(m.homeForm)}
         <span class="match-meta">
           <span class="match-date">${formatDate(m.utcDate)}</span>
+          ${m.league ? `<span class="match-league-badge">${m.league}</span>` : ""}
           <span class="confidence conf-${conf}" title="Based on sample size of home/away games this season">Data: ${conf}</span>
         </span>
         ${formHtml(m.awayForm)}
@@ -291,6 +292,7 @@ function leagueSectionHtml(league) {
 }
 
 let currentLeaguesData = []; // cached for client-side search filtering, no extra API calls needed
+let leagueViewMode = "byLeague"; // or "byTime"
 
 function renderLeagueSections(searchTerm = "") {
   const term = searchTerm.trim().toLowerCase();
@@ -299,6 +301,17 @@ function renderLeagueSections(searchTerm = "") {
     .filter((league) => league.error || league.matches.length > 0);
 
   if (term && filtered.length === 0) return `<div class="empty">No matches found for "${searchTerm}".</div>`;
+
+  if (leagueViewMode === "byTime") {
+    // Flatten every league's matches into one list, tagging each with its
+    // league name (matchCardHtml shows this as a small badge only when
+    // present — the grouped view never sets it, so nothing changes there).
+    const flat = filtered.flatMap((league) => league.matches.map((m) => ({ ...m, league: league.league })));
+    flat.sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate));
+    if (flat.length === 0) return `<div class="empty">No upcoming matches scheduled.</div>`;
+    return flat.map(matchCardHtml).join("");
+  }
+
   return filtered.map(leagueSectionHtml).join("");
 }
 
@@ -309,6 +322,7 @@ async function renderPredictions() {
       <div class="tabs">
         <button class="tab-btn active" id="tabLeagues">Leagues</button>
         <button class="tab-btn" id="tabLive">Live</button>
+        <button class="tab-btn" id="tabResults">Results</button>
         <button class="tab-btn" id="tabManual">Manual</button>
         <button class="tab-btn" id="tabAccounts" style="display:none">Accounts</button>
         <button class="secondary" id="refreshBtn" title="Reload predictions">Refresh</button>
@@ -316,7 +330,13 @@ async function renderPredictions() {
       </div>
     </div>
     <div class="content">
-      <input id="teamSearch" placeholder="🔍 Search by team…" style="margin-bottom:18px" />
+      <div style="display:flex; gap:8px; align-items:center; margin-bottom:18px; flex-wrap:wrap;">
+        <input id="teamSearch" placeholder="🔍 Search by team…" style="flex:1; min-width:180px; margin-bottom:0" />
+        <div class="tabs">
+          <button class="tab-btn${leagueViewMode === "byLeague" ? " active" : ""}" id="viewByLeagueBtn" style="padding:12px 14px">By League</button>
+          <button class="tab-btn${leagueViewMode === "byTime" ? " active" : ""}" id="viewByTimeBtn" style="padding:12px 14px">By Time</button>
+        </div>
+      </div>
       <div id="predictionsArea">${skeletonHtml()}</div>
     </div>
     <div class="disclaimer">Predictions are statistical estimates (Poisson + Dixon–Coles + recent-form weighting) based on this season's scoring data — for fun, not financial or betting advice.</div>
@@ -326,8 +346,21 @@ async function renderPredictions() {
   document.getElementById("tabManual").addEventListener("click", renderManualTools);
   document.getElementById("tabLeagues").addEventListener("click", renderPredictions);
   document.getElementById("tabLive").addEventListener("click", renderLive);
+  document.getElementById("tabResults").addEventListener("click", renderResults);
   document.getElementById("teamSearch").addEventListener("input", (e) => {
     document.getElementById("predictionsArea").innerHTML = renderLeagueSections(e.target.value);
+  });
+  document.getElementById("viewByLeagueBtn").addEventListener("click", () => {
+    leagueViewMode = "byLeague";
+    document.getElementById("viewByLeagueBtn").classList.add("active");
+    document.getElementById("viewByTimeBtn").classList.remove("active");
+    document.getElementById("predictionsArea").innerHTML = renderLeagueSections(document.getElementById("teamSearch").value);
+  });
+  document.getElementById("viewByTimeBtn").addEventListener("click", () => {
+    leagueViewMode = "byTime";
+    document.getElementById("viewByTimeBtn").classList.add("active");
+    document.getElementById("viewByLeagueBtn").classList.remove("active");
+    document.getElementById("predictionsArea").innerHTML = renderLeagueSections(document.getElementById("teamSearch").value);
   });
 
   // Only shows the Accounts tab if this user turns out to be the owner —
@@ -564,6 +597,7 @@ async function renderLive() {
       <div class="tabs">
         <button class="tab-btn" id="tabLeagues">Leagues</button>
         <button class="tab-btn active" id="tabLive">Live</button>
+        <button class="tab-btn" id="tabResults">Results</button>
         <button class="tab-btn" id="tabManual">Manual</button>
         <button class="tab-btn" id="tabAccounts" style="display:none">Accounts</button>
         <button class="secondary" id="logoutBtn">Log out</button>
@@ -574,6 +608,7 @@ async function renderLive() {
   document.getElementById("logoutBtn").addEventListener("click", () => { setToken(null); renderLogin(); });
   document.getElementById("tabLeagues").addEventListener("click", renderPredictions);
   document.getElementById("tabLive").addEventListener("click", renderLive);
+  document.getElementById("tabResults").addEventListener("click", renderResults);
   document.getElementById("tabManual").addEventListener("click", renderManualTools);
   api("/api/me").then(({ isOwner }) => {
     if (!isOwner) return;
@@ -625,6 +660,97 @@ function liveMatchHtml(m) {
   `;
 }
 
+// Recently finished matches per league, most recent first, with whatever
+// we predicted for each one and whether it actually hit — reuses the same
+// tab pattern as Live, just a different data source (finished matches
+// instead of in-play ones).
+async function renderResults() {
+  app.innerHTML = `
+    <div class="top-bar">
+      <h1>⚽ Footy Predict</h1>
+      <div class="tabs">
+        <button class="tab-btn" id="tabLeagues">Leagues</button>
+        <button class="tab-btn" id="tabLive">Live</button>
+        <button class="tab-btn active" id="tabResults">Results</button>
+        <button class="tab-btn" id="tabManual">Manual</button>
+        <button class="tab-btn" id="tabAccounts" style="display:none">Accounts</button>
+        <button class="secondary" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+    <div class="content" id="resultsArea">${skeletonHtml(3)}</div>
+  `;
+  document.getElementById("logoutBtn").addEventListener("click", () => { setToken(null); renderLogin(); });
+  document.getElementById("tabLeagues").addEventListener("click", renderPredictions);
+  document.getElementById("tabLive").addEventListener("click", renderLive);
+  document.getElementById("tabResults").addEventListener("click", renderResults);
+  document.getElementById("tabManual").addEventListener("click", renderManualTools);
+  api("/api/me").then(({ isOwner }) => {
+    if (!isOwner) return;
+    const btn = document.getElementById("tabAccounts");
+    btn.style.display = "";
+    btn.addEventListener("click", renderAccounts);
+  }).catch(() => {});
+
+  try {
+    const { leagues, loading } = await api("/api/results");
+    const area = document.getElementById("resultsArea");
+    const sections = leagues
+      .filter((l) => l.matches.length > 0 || l.loading)
+      .map((l) => l.loading
+        ? `<div class="league-section"><div class="league-title">${l.league}</div>${skeletonHtml(2)}</div>`
+        : `<div class="league-section"><div class="league-title">${l.league} <span class="match-count">${l.matches.length}</span></div>${l.matches.map(resultMatchHtml).join("")}</div>`
+      );
+    area.innerHTML = sections.length > 0 ? sections.join("") : `<div class="empty">No finished matches yet.</div>`;
+    if (loading) setTimeout(() => { if (document.getElementById("tabResults")?.classList.contains("active")) renderResults(); }, 15000);
+  } catch (e) {
+    if (e.message.includes("logged in") || e.message.includes("expired")) { setToken(null); renderLogin(); return; }
+    document.getElementById("resultsArea").innerHTML = `<div class="league-error">${e.message}</div>`;
+  }
+}
+
+const RESULT_MARKET_LABELS = [
+  { pickKey: "resultPick", correctKey: "resultCorrect", label: "Result" },
+  { pickKey: "goalsOverUnderPick", correctKey: "goalsOverUnderCorrect", label: "Goals O/U" },
+  { pickKey: "bttsPick", correctKey: "bttsCorrect", label: "BTTS" },
+  { pickKey: "cornersPick", correctKey: "cornersCorrect", label: "Corners" },
+  { pickKey: "throwInsPick", correctKey: "throwInsCorrect", label: "Throw-ins" },
+  { pickKey: "cardsPick", correctKey: "cardsCorrect", label: "Cards" },
+];
+
+function resultMatchHtml(m) {
+  const hasScore = m.homeScore !== null && m.awayScore !== null;
+  const badgeRow = m.prediction
+    ? RESULT_MARKET_LABELS
+        .filter((mk) => m.prediction[mk.pickKey] !== undefined)
+        .map((mk) => {
+          const correct = m.prediction[mk.correctKey];
+          const icon = correct === true ? "✅" : correct === false ? "❌" : "—";
+          return `<span class="result-badge">${icon} ${mk.label}</span>`;
+        })
+        .join("")
+    : `<span class="result-badge result-badge-muted">No prediction was logged for this match</span>`;
+
+  return `
+    <div class="match-card">
+      <div class="match-teams">
+        <div class="team home">
+          ${m.homeCrest ? `<img src="${m.homeCrest}" alt="" />` : ""}
+          <span>${m.homeTeam}</span>
+        </div>
+        <div class="live-score">
+          <span class="live-score-value" style="color:var(--text-dim); font-size:16px;">${hasScore ? `${m.homeScore} – ${m.awayScore}` : "–"}</span>
+        </div>
+        <div class="team away">
+          <span>${m.awayTeam}</span>
+          ${m.awayCrest ? `<img src="${m.awayCrest}" alt="" />` : ""}
+        </div>
+      </div>
+      <div class="match-date">${formatDate(m.utcDate)}</div>
+      <div class="result-badges">${badgeRow}</div>
+    </div>
+  `;
+}
+
 async function renderAccounts() {
   app.innerHTML = `
     <div class="top-bar">
@@ -632,6 +758,7 @@ async function renderAccounts() {
       <div class="tabs">
         <button class="tab-btn" id="tabLeagues">Leagues</button>
         <button class="tab-btn" id="tabLive">Live</button>
+        <button class="tab-btn" id="tabResults">Results</button>
         <button class="tab-btn" id="tabManual">Manual</button>
         <button class="tab-btn active" id="tabAccounts">Accounts</button>
         <button class="secondary" id="logoutBtn">Log out</button>
@@ -660,6 +787,7 @@ async function renderAccounts() {
   document.getElementById("tabManual").addEventListener("click", renderManualTools);
   document.getElementById("tabLeagues").addEventListener("click", renderPredictions);
   document.getElementById("tabLive").addEventListener("click", renderLive);
+  document.getElementById("tabResults").addEventListener("click", renderResults);
   document.getElementById("tabAccounts").addEventListener("click", renderAccounts);
 
   document.getElementById("addAccountBtn").addEventListener("click", async () => {
@@ -726,6 +854,7 @@ async function renderManualTools() {
       <div class="tabs">
         <button class="tab-btn" id="tabLeagues">Leagues</button>
         <button class="tab-btn" id="tabLive">Live</button>
+        <button class="tab-btn" id="tabResults">Results</button>
         <button class="tab-btn active" id="tabManual">Manual</button>
         <button class="tab-btn" id="tabAccounts" style="display:none">Accounts</button>
         <button class="secondary" id="logoutBtn">Log out</button>
@@ -811,6 +940,7 @@ async function renderManualTools() {
   document.getElementById("tabManual").addEventListener("click", renderManualTools);
   document.getElementById("tabLeagues").addEventListener("click", renderPredictions);
   document.getElementById("tabLive").addEventListener("click", renderLive);
+  document.getElementById("tabResults").addEventListener("click", renderResults);
   api("/api/me").then(({ isOwner }) => {
     if (!isOwner) return;
     const btn = document.getElementById("tabAccounts");

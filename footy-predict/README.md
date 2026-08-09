@@ -273,6 +273,19 @@ hour ago as if it were current would be actively misleading, not just a
 minor inconvenience, so every prediction and live match always comes
 fresh from the network, online-only, exactly as before.
 
+## Results and chronological view
+
+A new **Results** tab shows the most recent finished matches per league,
+with the final score and — for anything this app actually predicted —
+a row of hit/miss badges (✅/❌) per market: result, goals O/U, BTTS,
+corners, throw-ins, cards. Reuses the finished-match data and prediction
+log that were already being tracked; no new API calls.
+
+On the **Leagues** tab, a **By League / By Time** toggle next to search
+switches between the usual grouped view and one flat list of every
+upcoming match across all 10 leagues, sorted by kickoff time — each card
+tagged with its league so it's still clear what's what.
+
 ## Live matches
 
 A separate **Live** tab shows every match currently in play across your 5

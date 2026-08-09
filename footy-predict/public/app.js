@@ -639,6 +639,7 @@ async function renderLive() {
 
 function liveMatchHtml(m) {
   const statusLabel = m.status === "PAUSED" ? "HT" : `${m.minute ?? "?"}'`;
+  const p = m.prediction;
   return `
     <div class="match-card">
       <div class="match-teams">
@@ -656,6 +657,21 @@ function liveMatchHtml(m) {
         </div>
       </div>
       <div class="match-date">${m.league}</div>
+      ${p ? `
+        <div class="explain" style="margin-top:12px; padding-top:12px;">
+          <div class="explain-label" style="margin-bottom:8px;">Pre-match prediction</div>
+          <div class="prediction-bar">
+            <div class="home" style="width:${p.homeWinPct}%"></div>
+            <div class="draw" style="width:${p.drawPct}%"></div>
+            <div class="away" style="width:${p.awayWinPct}%"></div>
+          </div>
+          <div class="prediction-labels">
+            <span><strong>${p.homeWinPct}%</strong> Home</span>
+            <span><strong>${p.drawPct}%</strong> Draw</span>
+            <span><strong>${p.awayWinPct}%</strong> Away</span>
+          </div>
+        </div>
+      ` : ""}
     </div>
   `;
 }

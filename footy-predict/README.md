@@ -288,12 +288,19 @@ tagged with its league so it's still clear what's what.
 
 ## Live matches
 
-A separate **Live** tab shows every match currently in play across your 5
+A separate **Live** tab shows every match currently in play across your 10
 leagues, sorted by kickoff time. This runs on its own fast refresh cycle —
 every 1 minute server-side, every 30 seconds while you have the tab open —
 completely separate from the 20-minute league cache, since a score that's
 20 minutes stale isn't "live" at all. One API call covers all 10 leagues
 at once (football-data.org's `LIVE` status filter works across competitions).
+
+Where available, each live match also shows its **pre-match prediction**
+underneath the live score — cross-referenced from the same 20-minute
+league cache by match ID. This is best-effort: a match that just kicked
+off may have already dropped out of the "scheduled" list by the time the
+league cache last refreshed, so not every live match will have one — the
+live score always shows regardless, the prediction is a bonus when it's there.
 
 ## Loading speed
 

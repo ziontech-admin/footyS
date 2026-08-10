@@ -277,9 +277,19 @@ fresh from the network, online-only, exactly as before.
 
 A new **Results** tab shows the most recent finished matches per league,
 with the final score and — for anything this app actually predicted —
-a row of hit/miss badges (✅/❌) per market: result, goals O/U, BTTS,
-corners, throw-ins, cards. Reuses the finished-match data and prediction
-log that were already being tracked; no new API calls.
+real outcome tracking per market. **Corners and throw-ins** get their own
+prominent boxes: the actual predicted side, line, and confidence, next to
+the real final count, colored **green when the prediction hit and red when
+it missed** — not just a checkmark. Result, Goals O/U, BTTS, and Cards
+show as a simpler ✅/❌ badge row underneath. Reuses the finished-match
+data and prediction log that were already being tracked; no new API calls.
+
+**One honest gap, worth knowing**: a league only starts logging
+predictions from the point it's added to the app — any match that had
+already finished before that point will show "No prediction was logged
+for this match," since it was never seen as an upcoming fixture while the
+app was tracking it. Not a bug, just a one-time gap from whenever a league
+gets added.
 
 On the **Leagues** tab, a **By League / By Time** toggle next to search
 switches between the usual grouped view and one flat list of every
@@ -296,11 +306,18 @@ completely separate from the 20-minute league cache, since a score that's
 at once (football-data.org's `LIVE` status filter works across competitions).
 
 Where available, each live match also shows its **pre-match prediction**
-underneath the live score — cross-referenced from the same 20-minute
-league cache by match ID. This is best-effort: a match that just kicked
-off may have already dropped out of the "scheduled" list by the time the
-league cache last refreshed, so not every live match will have one — the
-live score always shows regardless, the prediction is a bonus when it's there.
+underneath the live score — cross-referenced from the permanent prediction
+log (the same one used for accuracy tracking), by match ID. Using the
+permanent log instead of the 20-minute league cache matters: the cache
+only holds currently-scheduled matches, so a match would lose its
+prediction the moment it kicked off and dropped out of that snapshot. The
+log keeps every match's prediction forever once it's been made, so this
+doesn't happen anymore. The one remaining gap: a match still needs to
+have been seen as an upcoming fixture *at least once* while this app was
+running to have a logged prediction at all — a league added partway
+through a matchday, or a match that was already live the very first time
+this app checked it, won't have one. That's the same one-time gap
+described for the Results tab above, not a separate issue.
 
 ## Loading speed
 

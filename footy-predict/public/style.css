@@ -538,6 +538,24 @@ button.secondary:hover { background: #262b37; border-color: var(--border-hover);
 }
 .result-badge-muted { color: var(--text-faint); font-style: italic; }
 
+.stat-outcome-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-top: 10px;
+}
+.stat-outcome-box strong { font-family: "JetBrains Mono", monospace; }
+.stat-outcome-correct { background: var(--green-dim); color: var(--green); border: 1px solid rgba(46,204,143,0.3); }
+.stat-outcome-correct strong { color: var(--green); }
+.stat-outcome-incorrect { background: var(--red-dim); color: var(--red); border: 1px solid rgba(240,84,107,0.3); }
+.stat-outcome-incorrect strong { color: var(--red); }
+.stat-outcome-unknown { background: var(--card-hover); color: var(--text-faint); border: 1px solid var(--border); }
+
 .explain {
   margin-top: 12px;
   padding-top: 12px;

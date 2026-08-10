@@ -74,6 +74,7 @@ function checkPredictionOutcome(logged, actualHomeGoals, actualAwayGoals, actual
     const actualTotal = stat.home + stat.away;
     const actualSide = actualTotal > logged[lineKey] ? "over" : "under";
     result[resultKey] = logged[pickKey] === actualSide;
+    result[`${statKey}Actual`] = actualTotal; // e.g. cornersActual — the real number, not just hit/miss
   });
 
   return result;

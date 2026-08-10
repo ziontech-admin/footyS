@@ -339,15 +339,34 @@ async function computeOneLeague(league) {
           newLogEntries.push({
             matchId: m.id, league: league.name, homeTeam: m.homeTeam.name, awayTeam: m.awayTeam.name, utcDate: m.utcDate,
             resultPick, goalsOverUnderPick, goalsOverUnderLine: goalsOverUnder.overUnderLine,
+            // Full snapshot of the actual prediction shown pre-match — kept
+            // permanently in this log (unlike the 20-minute league cache,
+            // which only holds currently-scheduled matches and loses a
+            // match's prediction the moment it goes live). This is what
+            // lets the Live tab keep showing a match's prediction even
+            // after it's kicked off and dropped out of "scheduled".
+            snapshot: {
+              homeWinPct: prediction.homeWinPct, drawPct: prediction.drawPct, awayWinPct: prediction.awayWinPct,
+              likelyScore: prediction.likelyScore,
+            },
             // Every other market this app predicts, logged the same way so
             // its real-world accuracy can be measured too — not just the
             // result and goals markets.
             bttsPick: prediction.bttsYesPct >= prediction.bttsNoPct ? "yes" : "no",
             homeCleanSheetPick: prediction.homeCleanSheetPct >= 50 ? "yes" : "no",
             awayCleanSheetPick: prediction.awayCleanSheetPct >= 50 ? "yes" : "no",
-            ...(corners ? { cornersPick: corners.overPct >= corners.underPct ? "over" : "under", cornersLine: corners.overUnderLine } : {}),
-            ...(throwIns ? { throwInsPick: throwIns.overPct >= throwIns.underPct ? "over" : "under", throwInsLine: throwIns.overUnderLine } : {}),
-            ...(cards ? { cardsPick: cards.overPct >= cards.underPct ? "over" : "under", cardsLine: cards.overUnderLine } : {}),
+            ...(corners ? {
+              cornersPick: corners.overPct >= corners.underPct ? "over" : "under", cornersLine: corners.overUnderLine,
+              cornersPct: Math.max(corners.overPct, corners.underPct),
+            } : {}),
+            ...(throwIns ? {
+              throwInsPick: throwIns.overPct >= throwIns.underPct ? "over" : "under", throwInsLine: throwIns.overUnderLine,
+              throwInsPct: Math.max(throwIns.overPct, throwIns.underPct),
+            } : {}),
+            ...(cards ? {
+              cardsPick: cards.overPct >= cards.underPct ? "over" : "under", cardsLine: cards.overUnderLine,
+              cardsPct: Math.max(cards.overPct, cards.underPct),
+            } : {}),
             resolved: false,
           });
         }
@@ -501,9 +520,12 @@ function assembleResultsPicture(limitPerLeague = 10) {
           resultPick: entry.resultPick, resultCorrect: entry.resultCorrect,
           goalsOverUnderPick: entry.goalsOverUnderPick, goalsOverUnderCorrect: entry.goalsOverUnderCorrect,
           bttsPick: entry.bttsPick, bttsCorrect: entry.bttsCorrect,
-          cornersPick: entry.cornersPick, cornersCorrect: entry.cornersCorrect,
-          throwInsPick: entry.throwInsPick, throwInsCorrect: entry.throwInsCorrect,
-          cardsPick: entry.cardsPick, cardsCorrect: entry.cardsCorrect,
+          cornersPick: entry.cornersPick, cornersLine: entry.cornersLine, cornersPct: entry.cornersPct,
+          cornersCorrect: entry.cornersCorrect, cornersActual: entry.cornersActual,
+          throwInsPick: entry.throwInsPick, throwInsLine: entry.throwInsLine, throwInsPct: entry.throwInsPct,
+          throwInsCorrect: entry.throwInsCorrect, throwInsActual: entry.throwInsActual,
+          cardsPick: entry.cardsPick, cardsLine: entry.cardsLine, cardsPct: entry.cardsPct,
+          cardsCorrect: entry.cardsCorrect, cardsActual: entry.cardsActual,
         } : null,
       };
     });
@@ -609,18 +631,15 @@ async function refreshLiveMatches() {
     const matches = await liveMatches(LEAGUES.map((l) => l.code));
     const leagueNameByCode = Object.fromEntries(LEAGUES.map((l) => [l.code, l.name]));
 
-    // Build a lookup of every pre-match prediction we already have cached,
-    // across all leagues, keyed by match ID — best effort: a match that
-    // just kicked off may have already dropped out of the "scheduled" list
-    // by the time the league cache last refreshed (it only runs every 20
-    // minutes), so not every live match will have one. That's fine — the
-    // live score always shows regardless, the prediction is a bonus when available.
-    const predictionById = {};
-    LEAGUES.forEach((league) => {
-      const cached = leagueCache[league.code];
-      if (!cached) return;
-      cached.result.matches.forEach((m) => { predictionById[m.id] = { prediction: m.prediction, goalsOverUnder: m.goalsOverUnder }; });
-    });
+    // Build a lookup of every pre-match prediction ever logged, keyed by
+    // match ID. Using the permanent prediction log here (not the 20-minute
+    // league cache) is what actually fixes the gap where a match that
+    // kicked off would lose its prediction the moment it dropped out of
+    // the cache's "currently scheduled" snapshot — the log keeps every
+    // match's prediction forever, regardless of what's live right now.
+    const predictionById = Object.fromEntries(
+      getPredictionLog().map((entry) => [entry.matchId, entry.snapshot]).filter(([, snapshot]) => snapshot)
+    );
 
     liveCache = matches
       .map((m) => ({
@@ -629,8 +648,7 @@ async function refreshLiveMatches() {
         homeTeam: m.homeTeam?.name, awayTeam: m.awayTeam?.name,
         homeCrest: m.homeTeam?.crest, awayCrest: m.awayTeam?.crest,
         homeScore: m.score?.fullTime?.home ?? 0, awayScore: m.score?.fullTime?.away ?? 0,
-        prediction: predictionById[m.id]?.prediction || null,
-        goalsOverUnder: predictionById[m.id]?.goalsOverUnder || null,
+        prediction: predictionById[m.id] || null,
       }))
       .sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate)); // earliest kickoff first
     liveCacheError = null;

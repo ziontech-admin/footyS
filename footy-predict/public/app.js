@@ -670,6 +670,7 @@ function liveMatchHtml(m) {
             <span><strong>${p.drawPct}%</strong> Draw</span>
             <span><strong>${p.awayWinPct}%</strong> Away</span>
           </div>
+          ${p.likelyScore ? `<div class="likely-score" style="margin-top:4px">Predicted: ${p.likelyScore}</div>` : ""}
         </div>
       ` : ""}
     </div>
@@ -728,13 +729,38 @@ const RESULT_MARKET_LABELS = [
   { pickKey: "resultPick", correctKey: "resultCorrect", label: "Result" },
   { pickKey: "goalsOverUnderPick", correctKey: "goalsOverUnderCorrect", label: "Goals O/U" },
   { pickKey: "bttsPick", correctKey: "bttsCorrect", label: "BTTS" },
-  { pickKey: "cornersPick", correctKey: "cornersCorrect", label: "Corners" },
-  { pickKey: "throwInsPick", correctKey: "throwInsCorrect", label: "Throw-ins" },
   { pickKey: "cardsPick", correctKey: "cardsCorrect", label: "Cards" },
 ];
 
+// A prominent green/red box for one over/under stat market — shows the
+// actual prediction (side, line, confidence) against the real final count,
+// not just a hit/miss icon. Used for corners and throw-ins specifically,
+// since those are the markets worth seeing the real numbers for, not just
+// whether they landed.
+function statOutcomeBoxHtml(icon, label, m, key) {
+  const pick = m.prediction?.[`${key}Pick`];
+  if (!pick) return "";
+  const line = m.prediction[`${key}Line`];
+  const pct = m.prediction[`${key}Pct`];
+  const correct = m.prediction[`${key}Correct`];
+  const actual = m.prediction[`${key}Actual`];
+  if (correct === undefined || actual === undefined) {
+    return `<div class="stat-outcome-box stat-outcome-unknown">${icon} ${label}: predicted ${pick} ${line} (${pct}%) — actual count unavailable</div>`;
+  }
+  const cls = correct ? "stat-outcome-correct" : "stat-outcome-incorrect";
+  const resultIcon = correct ? "✅" : "❌";
+  return `
+    <div class="stat-outcome-box ${cls}">
+      <span>${icon} ${label}: predicted <strong>${pick} ${line}</strong> (${pct}%) · actual <strong>${actual}</strong></span>
+      <span>${resultIcon}</span>
+    </div>
+  `;
+}
+
 function resultMatchHtml(m) {
   const hasScore = m.homeScore !== null && m.awayScore !== null;
+  const cornersBox = m.prediction ? statOutcomeBoxHtml("⛳", "Corners", m, "corners") : "";
+  const throwInsBox = m.prediction ? statOutcomeBoxHtml("🤾", "Throw-ins", m, "throwIns") : "";
   const badgeRow = m.prediction
     ? RESULT_MARKET_LABELS
         .filter((mk) => m.prediction[mk.pickKey] !== undefined)
@@ -762,6 +788,8 @@ function resultMatchHtml(m) {
         </div>
       </div>
       <div class="match-date">${formatDate(m.utcDate)}</div>
+      ${cornersBox}
+      ${throwInsBox}
       <div class="result-badges">${badgeRow}</div>
     </div>
   `;

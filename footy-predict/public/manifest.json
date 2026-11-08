@@ -1,7 +1,7 @@
 {
-  "name": "Footy Predict",
-  "short_name": "Footy Predict",
-  "description": "Stats-based football predictions across 5 leagues",
+  "name": "ZTA — Zion Throw-In Analytics",
+  "short_name": "ZTA",
+  "description": "Football throw-in and corner analytics across supported competitions",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -1,7 +1,7 @@
 {
   "name": "footy-predict",
   "version": "1.24.0",
-  "description": "Stats-based football outcome predictions for a small group of friends",
+  "description": "ZTA — Zion Throw-In Analytics: football throw-in and corner predictions",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

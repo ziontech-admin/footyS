@@ -21,8 +21,8 @@ function renderLogin(errorMsg = "") {
   app.innerHTML = `
     <div class="center-screen">
       <div class="login-card">
-        <h1>⚽ Footy Predict</h1>
-        <div class="subtitle">Stats-based predictions — informational only, not betting advice.</div>
+        <h1>ZTA</h1>
+        <div class="subtitle">Zion Throw-In Analytics · Throw-ins & corners · Informational analysis</div>
         <input id="username" placeholder="Username" autocomplete="username" />
         <input id="password" type="password" placeholder="Password" autocomplete="current-password" />
         ${errorMsg ? `<div class="error">${errorMsg}</div>` : ""}
@@ -73,7 +73,7 @@ function renderForgotPassword(step = "request") {
   app.innerHTML = `
     <div class="center-screen">
       <div class="login-card">
-        <h1>⚽ Footy Predict</h1>
+        <h1>ZTA</h1>
         ${step === "request" ? requestStepHtml : codeStepHtml}
       </div>
     </div>
@@ -318,7 +318,7 @@ function renderLeagueSections(searchTerm = "") {
 async function renderPredictions() {
   app.innerHTML = `
     <div class="top-bar">
-      <h1>⚽ Footy Predict</h1>
+      <h1>ZTA</h1>
       <div class="tabs">
         <button class="tab-btn active" id="tabLeagues">Leagues</button>
         <button class="tab-btn" id="tabLive">Live</button>
@@ -593,7 +593,7 @@ let uploadedLeagueData = null; // cached in memory for this session only — see
 async function renderLive() {
   app.innerHTML = `
     <div class="top-bar">
-      <h1>⚽ Footy Predict</h1>
+      <h1>ZTA</h1>
       <div class="tabs">
         <button class="tab-btn" id="tabLeagues">Leagues</button>
         <button class="tab-btn active" id="tabLive">Live</button>
@@ -684,7 +684,7 @@ function liveMatchHtml(m) {
 async function renderResults() {
   app.innerHTML = `
     <div class="top-bar">
-      <h1>⚽ Footy Predict</h1>
+      <h1>ZTA</h1>
       <div class="tabs">
         <button class="tab-btn" id="tabLeagues">Leagues</button>
         <button class="tab-btn" id="tabLive">Live</button>
@@ -798,7 +798,7 @@ function resultMatchHtml(m) {
 async function renderAccounts() {
   app.innerHTML = `
     <div class="top-bar">
-      <h1>⚽ Footy Predict</h1>
+      <h1>ZTA</h1>
       <div class="tabs">
         <button class="tab-btn" id="tabLeagues">Leagues</button>
         <button class="tab-btn" id="tabLive">Live</button>
@@ -894,7 +894,7 @@ function accountRowHtml(a) {
 async function renderManualTools() {
   app.innerHTML = `
     <div class="top-bar">
-      <h1>⚽ Footy Predict</h1>
+      <h1>ZTA</h1>
       <div class="tabs">
         <button class="tab-btn" id="tabLeagues">Leagues</button>
         <button class="tab-btn" id="tabLive">Live</button>

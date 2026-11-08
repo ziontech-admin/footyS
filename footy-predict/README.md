@@ -1,8 +1,8 @@
-# Footy Predict
+# ZTA — Zion Throw-In Analytics
 
-Stats-based football outcome predictions (Premier League, La Liga, Serie A,
+Football statistics and pre-match prediction platform focused on throw-ins and corners. The current codebase is the foundation for ZTA's staged upgrade. Existing goal-prediction capabilities are retained during the transition. Supported competitions currently include Premier League, La Liga, Serie A,
 Bundesliga, Ligue 1, Champions League, Eredivisie, Primeira Liga,
-Championship, and Brazilian Série A) for you and a small group of friends.
+Championship, and Brazilian Série A) with the initial implementation focused on a limited set of competitions.
 Informational only — not betting advice, no real money involved anywhere
 in this app.
 
